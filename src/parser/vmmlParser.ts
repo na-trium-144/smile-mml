@@ -100,7 +100,7 @@ export class MMLChannelParser {
       envelope: defaultEnvelope,
       modulation: defaultModulation,
       keyShift: initialKeyShift, // 30: K
-      outputOctave: 4, // 31: o
+      // outputOctave: 4, // 31: o
       variables: [0, 0, 0, 0, 0, 0, 0, 0], // 32-39: $0-$7
     };
   }
@@ -833,7 +833,6 @@ export class MMLChannelParser {
       // Octave O<octave>
       if (c === 'O') {
         this.params.octave = v;
-        this.params.outputOctave = v;
         continue;
       }
 

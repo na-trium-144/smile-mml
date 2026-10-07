@@ -38,7 +38,7 @@ export interface ChannelParameters {
   envelope: EnvelopeParams;
   modulation: ModulationParams;
   keyShift: number; // K (default: 0)
-  outputOctave: number; // o (default: 4)
+  // outputOctave: number; // o (default: 4)
   variables: number[]; // $0-$7 (default: 0)
 }
 
