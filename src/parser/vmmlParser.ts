@@ -249,33 +249,19 @@ export class MMLChannelParser {
         continue;
       }
 
-      // Volume up (
+      // Velocity up (
       if (c === '(') {
         const { num, str } = this.gtv();
         const delta = str === '' ? 1 : num;
-        this.params.volume = Math.min(127, this.params.volume + delta);
-        yield {
-          type: 'control',
-          channel: this.channelIndex,
-          tick: this.currentTick,
-          controller: 7,
-          value: this.params.volume,
-        };
+        this.params.velocity = Math.min(127, this.params.velocity + delta);
         continue;
       }
 
-      // Volume down )
+      // Velocity down )
       if (c === ')') {
         const { num, str } = this.gtv();
         const delta = str === '' ? 1 : num;
-        this.params.volume = Math.max(0, this.params.volume - delta);
-        yield {
-          type: 'control',
-          channel: this.channelIndex,
-          tick: this.currentTick,
-          controller: 7,
-          value: this.params.volume,
-        };
+        this.params.velocity = Math.max(0, this.params.velocity - delta);
         continue;
       }
 
@@ -328,7 +314,7 @@ export class MMLChannelParser {
             `☆O${this.params.octave}` +
             `L${this.params.length}${'.'.repeat(this.params.dots)}` +
             `Q${this.params.gate}` +
-            `V${this.params.volume}` +
+            `V${this.params.velocity}` +
             `K${this.params.keyShift}`;
           this.mmlText = this.mmlText.slice(0, this.pos) + backupStr + this.mmlText.slice(this.pos);
         }
@@ -372,7 +358,14 @@ export class MMLChannelParser {
         if (nextC === 'V') {
           this.pos++;
           const { num } = this.gtv();
-          this.params.velocity = num;
+          this.params.volume = num;
+          yield {
+            type: 'control',
+            channel: this.channelIndex,
+            tick: this.currentTick,
+            controller: 7,
+            value: num,
+          };
           continue;
         }
         if (nextC === 'D') {
@@ -434,6 +427,9 @@ export class MMLChannelParser {
             } else {
               this.params.modulation.enabled = true;
               this.params.modulation.tremolo.enabled = true;
+              // @MA, @MP, @ML are mutually exclusive; disable the other two
+              this.params.modulation.vibrato.enabled = false;
+              this.params.modulation.autoPan.enabled = false;
               const depth = this.gtv();
               this.pos++;
               const range = this.gtv();
@@ -455,6 +451,9 @@ export class MMLChannelParser {
             } else {
               this.params.modulation.enabled = true;
               this.params.modulation.vibrato.enabled = true;
+              // @MA, @MP, @ML are mutually exclusive; disable the other two
+              this.params.modulation.tremolo.enabled = false;
+              this.params.modulation.autoPan.enabled = false;
               const depth = this.gtv();
               this.pos++;
               const range = this.gtv();
@@ -476,6 +475,9 @@ export class MMLChannelParser {
             } else {
               this.params.modulation.enabled = true;
               this.params.modulation.autoPan.enabled = true;
+              // @MA, @MP, @ML are mutually exclusive; disable the other two
+              this.params.modulation.tremolo.enabled = false;
+              this.params.modulation.vibrato.enabled = false;
               const depth = this.gtv();
               this.pos++;
               const range = this.gtv();
@@ -842,16 +844,9 @@ export class MMLChannelParser {
         continue;
       }
 
-      // Volume V<vol>
+      // Velocity V<vel>
       if (c === 'V') {
-        this.params.volume = v;
-        yield {
-          type: 'control',
-          channel: this.channelIndex,
-          tick: this.currentTick,
-          controller: 7,
-          value: v,
-        };
+        this.params.velocity = v;
         continue;
       }
 
