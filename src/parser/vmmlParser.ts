@@ -516,7 +516,7 @@ export class MMLChannelParser {
 
       let vn = 0;
       let vd = 0;
-      let pt = false;
+      let trailingPortamento = false; // PT in VMML-LIB
 
       // Restore C2&4 omitted note name matching VMML-LIB line 892-900
       if (this.tieNoteName !== '' && (c < 'A' || c > 'Z') && c !== '@' && c !== '|') {
@@ -577,7 +577,7 @@ export class MMLChannelParser {
       // Portamento length restoration C4_C
       if (this.portamentoLen > 0 && ((c >= 'A' && c <= 'G') || c === 'N' || c === 'R' || c === '|')) {
         if (vStr === '' && c !== 'R') {
-          pt = true;
+          trailingPortamento = true;
           v = this.portamentoLen;
         }
         if (c !== 'N') {
@@ -585,13 +585,17 @@ export class MMLChannelParser {
         }
       }
 
-      // Restore length from L command if omitted (not when pt=true)
-      if (c !== '@' && !pt && vStr === '') {
+      if (this.ld1() === '&') {
+        trailingPortamento = false;
+      }
+
+      // Restore length from L command if omitted (not when trailingPortamento=true)
+      if (c !== '@' && !trailingPortamento && vStr === '') {
         v = this.params.length;
         vd += this.params.dots;
         vStr = String(v);
       }
-      if (c === 'N' && !pt && v2Str === '') {
+      if (c === 'N' && !trailingPortamento && v2Str === '') {
         v2 = this.params.length;
         vd += this.params.dots;
         v2Str = String(v2);
@@ -619,6 +623,7 @@ export class MMLChannelParser {
         this.portamentoLen = v;
         this.pos++; // skip '_'
         hasPortamento = true;
+        trailingPortamento = false;
       }
 
       // Calculate note number with accidentals and key shift
@@ -635,7 +640,7 @@ export class MMLChannelParser {
       if (c === '|') {
         // Chord end: emit all notes in chordNotes with duration calculated from this |
         let noteDuration = 0;
-        if (!pt) {
+        if (!trailingPortamento) {
           noteDuration = Math.round(this.spd / v);
           let remVd = vd;
           let tempV = v;
@@ -648,7 +653,7 @@ export class MMLChannelParser {
 
         const startTick = this.currentTick;
         const gateRatio = this.params.gate / 8;
-        const gateDur = pt ? 0 : Math.max(1, Math.round(noteDuration * gateRatio));
+        const gateDur = trailingPortamento ? 0 : Math.max(1, Math.round(noteDuration * gateRatio));
         const { envelope, modulation } = this.cloneParams();
 
         for (const chordNote of this.chordNotes) {
@@ -673,7 +678,7 @@ export class MMLChannelParser {
           };
         }
 
-        if (!pt) {
+        if (!trailingPortamento) {
           this.currentTick += noteDuration;
         }
         this.inChord = false;
@@ -695,7 +700,7 @@ export class MMLChannelParser {
       // Output Note (A-G)
       if (c >= 'A' && c <= 'G') {
         let noteDuration = 0;
-        if (!pt) {
+        if (!trailingPortamento) {
           noteDuration = Math.round(this.spd / v);
           let remVd = vd;
           let tempV = v;
@@ -708,7 +713,7 @@ export class MMLChannelParser {
 
         const startTick = this.currentTick;
         const gateRatio = this.params.gate / 8;
-        const gateDur = pt ? 0 : Math.max(1, Math.round(noteDuration * gateRatio));
+        const gateDur = trailingPortamento ? 0 : Math.max(1, Math.round(noteDuration * gateRatio));
         const { envelope, modulation } = this.cloneParams();
 
         const clampedNote = Math.max(0, Math.min(127, n));
@@ -735,7 +740,7 @@ export class MMLChannelParser {
           isPortamento: hasPortamento,
         };
 
-        if (!pt) {
+        if (!trailingPortamento) {
           this.currentTick += noteDuration;
         }
         continue;
@@ -765,21 +770,19 @@ export class MMLChannelParser {
 
       // Direct Note Number N<note>[,<len>]
       if (c === 'N') {
-        let noteDuration = 0;
-        if (!pt) {
-          noteDuration = Math.round(this.spd / v2);
-          let remVd = vd;
-          let tempV = v2;
-          while (remVd > 0) {
-            tempV *= 2;
-            noteDuration += Math.round(this.spd / tempV);
-            remVd--;
-          }
+        // trailingPortamento is not considered here in original VMML-LIB
+        let noteDuration = Math.round(this.spd / v2);
+        let remVd = vd;
+        let tempV = v2;
+        while (remVd > 0) {
+          tempV *= 2;
+          noteDuration += Math.round(this.spd / tempV);
+          remVd--;
         }
 
         const startTick = this.currentTick;
         const gateRatio = this.params.gate / 8;
-        const gateDur = pt ? 0 : Math.max(1, Math.round(noteDuration * gateRatio));
+        const gateDur = Math.max(1, Math.round(noteDuration * gateRatio));
         const { envelope, modulation } = this.cloneParams();
 
         const noteNum = Math.max(0, Math.min(127, v + this.params.keyShift));
@@ -806,9 +809,7 @@ export class MMLChannelParser {
           isPortamento: hasPortamento,
         };
 
-        if (!pt) {
-          this.currentTick += noteDuration;
-        }
+        this.currentTick += noteDuration;
         continue;
       }
 
