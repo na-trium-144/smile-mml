@@ -4,7 +4,7 @@
  * extracting authentic instruments and waveforms.
  */
 
-import { NitroFS, Audio } from 'nitro-fs';
+import { NitroFS, Audio, BufferReader } from 'nitro-fs';
 import type { InstrumentBank } from './InstrumentBank.js';
 import type { VoiceData, ADSRParams, SampleVoiceData, PeriodicVoiceData, NoiseVoiceData } from '../types.js';
 import { generateSquareWaveHarmonics, PSG_DUTY_CYCLES } from '../utils/waveformGenerator.js';
@@ -26,10 +26,8 @@ export class NDSInstrumentBank implements InstrumentBank {
   /**
    * Load NDS ROM or SDAT binary buffer
    */
-  public async load(buffer: ArrayBuffer | Uint8Array): Promise<void> {
-    const raw = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
-
-    let sdatRaw: Uint8Array | null = null;
+  public async load(raw: ArrayBuffer): Promise<void> {
+    let sdatRaw: ArrayBuffer | null = null;
 
     // 1. Try parsing as NDS ROM filesystem
     try {
@@ -50,7 +48,7 @@ export class NDSInstrumentBank implements InstrumentBank {
       }
 
       // If not in common paths, scan root and subdirectories for .sdat
-      if (!sdatRaw) {
+      /*if (!sdatRaw) {
         const queue = ['/'];
         while (queue.length > 0 && !sdatRaw) {
           const dir = queue.shift()!;
@@ -71,14 +69,15 @@ export class NDSInstrumentBank implements InstrumentBank {
             }
           }
         }
-      }
+      }*/
     } catch {
       // Not an NDS ROM, will attempt raw SDAT below
     }
 
     // 2. If not found in ROM, check if the buffer itself is an SDAT file (magic: "SDAT")
     if (!sdatRaw) {
-      if (raw.length > 4 && raw[0] === 0x53 && raw[1] === 0x44 && raw[2] === 0x41 && raw[3] === 0x54) {
+      const rawArray = new Uint8Array(raw);
+      if (rawArray.length > 4 && rawArray[0] === 0x53 && rawArray[1] === 0x44 && rawArray[2] === 0x41 && rawArray[3] === 0x54) {
         sdatRaw = raw;
       }
     }
@@ -88,7 +87,8 @@ export class NDSInstrumentBank implements InstrumentBank {
     }
 
     // 3. Initialize SDAT
-    this.sdat = new Audio.SDAT(sdatRaw);
+    const reader = BufferReader.new(sdatRaw);
+    this.sdat = new Audio.SDAT(reader);
     this.sbnkList = [];
     this.swarList = [];
     this.pcmCache.clear();
