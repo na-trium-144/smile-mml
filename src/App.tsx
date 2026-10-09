@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Header } from './components/Header.js';
 import { MmlEditor } from './components/MmlEditor.js';
 import { MidiPreview } from './components/MidiPreview.js';
+import { AudioPlayer } from './components/AudioPlayer.js';
 import { parseMML } from './parser/vmmlParser.js';
 import { convertMmlToMidi } from './midi/mmlToMidi.js';
 import type { MMLEvent } from './parser/types.js';
@@ -141,6 +142,12 @@ export function App() {
 
           {error && <div className="error-banner">{error}</div>}
         </section>
+
+        {events.length > 0 && (
+          <section className="audio-section">
+            <AudioPlayer events={events} />
+          </section>
+        )}
 
         {events.length > 0 && (
           <section className="results-section">

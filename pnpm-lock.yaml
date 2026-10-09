@@ -8,6 +8,12 @@ importers:
 
   .:
     dependencies:
+      '@marmooo/soundfont-parser':
+        specifier: ^0.1.9
+        version: 0.1.9
+      nitro-fs:
+        specifier: ^1.1.1
+        version: 1.1.1
       react:
         specifier: ^19.2.8
         version: 19.3.0
@@ -197,6 +203,9 @@ packages:
     engines: {node: '>=18'}
     cpu: [x64]
     os: [win32]
+
+  '@marmooo/soundfont-parser@0.1.9':
+    resolution: {integrity: sha512-Qy9+8rzujikM/RN+gW8/VUw8V966L9OXeJ6lkMUHRNxjtNJFMLCvhIoz9IkkoYCQG1J5566p9vkhZbrsi58LrA==}
 
   '@oxc-project/types@0.152.0':
     resolution: {integrity: sha512-oM/5rLBm2tPkg0iBgkH/FOeR3PCDpY19GTgAZjMFM8h9WI9VW7cLgzp6nwtarYKmovavIQZ+Fe/RKX/8C8O/Rw==}
@@ -554,6 +563,9 @@ packages:
     engines: {node: ^10 || ^12 || ^13.7 || ^14 || >=15.0.1}
     hasBin: true
 
+  nitro-fs@1.1.1:
+    resolution: {integrity: sha512-WS4eqWS3li//ygz7KKWlLqSHE1gIGlJLrRGNk5+5yw/2e31UJrI7MYsLmDgL2Taqt6S4qZbldstdFdX4xL9bAA==}
+
   oxlint@1.87.0:
     resolution: {integrity: sha512-drxVlaW7Oqq7wSy1CN25znRu00aRq8n57Q2wniJRxCmtYVz07ufCm7EVDPQFZURrTgQIjzKrVEHAD/HcvJXObg==}
     engines: {node: ^20.19.0 || >=22.12.0}
@@ -738,6 +750,8 @@ snapshots:
 
   '@esbuild/win32-x64@0.28.2':
     optional: true
+
+  '@marmooo/soundfont-parser@0.1.9': {}
 
   '@oxc-project/types@0.152.0': {}
 
@@ -952,6 +966,8 @@ snapshots:
       lightningcss-win32-x64-msvc: 1.33.0
 
   nanoid@3.3.20: {}
+
+  nitro-fs@1.1.1: {}
 
   oxlint@1.87.0:
     optionalDependencies:
