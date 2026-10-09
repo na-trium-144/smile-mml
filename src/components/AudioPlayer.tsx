@@ -4,14 +4,14 @@
  * and wires MMLEvents through the audio engine pipeline for WebAudio playback.
  */
 
-import { useState, useRef, useCallback, useEffect, type FC } from 'react';
-import type { MMLEvent } from '../parser/types.js';
-import { InstrumentRegistry } from '../audio/banks/InstrumentRegistry.js';
-import { SF2InstrumentBank } from '../audio/banks/SF2InstrumentBank.js';
-import { NDSInstrumentBank } from '../audio/banks/NDSInstrumentBank.js';
-import { SynthEngine } from '../audio/synth/SynthEngine.js';
-import { MMLScheduler } from '../audio/scheduler/MMLScheduler.js';
-import { preparePlaybackEvents } from '../audio/track/trackProcessor.js';
+import { useState, useRef, useCallback, useEffect, type FC } from "react";
+import type { MMLEvent } from "../parser/types.js";
+import { InstrumentRegistry } from "../audio/banks/InstrumentRegistry.js";
+import { SF2InstrumentBank } from "../audio/banks/SF2InstrumentBank.js";
+import { NDSInstrumentBank } from "../audio/banks/NDSInstrumentBank.js";
+import { SynthEngine } from "../audio/synth/SynthEngine.js";
+import { MMLScheduler } from "../audio/scheduler/MMLScheduler.js";
+import { preparePlaybackEvents } from "../audio/track/trackProcessor.js";
 
 interface AudioPlayerProps {
   /** MML events from the parser */
@@ -20,17 +20,20 @@ interface AudioPlayerProps {
   ticksPerWholeNote?: number;
 }
 
-type PlaybackState = 'stopped' | 'playing' | 'paused';
+type PlaybackState = "stopped" | "playing" | "paused";
 
 export const AudioPlayer: FC<AudioPlayerProps> = ({
   events,
   ticksPerWholeNote = 192,
 }) => {
-  const [playbackState, setPlaybackState] = useState<PlaybackState>('stopped');
+  const [playbackState, setPlaybackState] = useState<PlaybackState>("stopped");
   const [currentTime, setCurrentTime] = useState(0);
   const [totalTime, setTotalTime] = useState(0);
   const [sf2Name, setSf2Name] = useState<string | null>(null);
   const [ndsName, setNdsName] = useState<string | null>(null);
+  const ndsBuffer = useRef<ArrayBuffer | null>(null);
+  const [ndsSdats, setNdsSdats] = useState<string[]>([]);
+  const [selectedNdsSdat, setSelectedNdsSdat] = useState<string>("");
   const [loadingAsset, setLoadingAsset] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -68,7 +71,7 @@ export const AudioPlayer: FC<AudioPlayerProps> = ({
       const file = e.target.files?.[0];
       if (!file) return;
 
-      setLoadingAsset('SF2');
+      setLoadingAsset("SF2");
       setLoadError(null);
 
       try {
@@ -78,38 +81,53 @@ export const AudioPlayer: FC<AudioPlayerProps> = ({
         getRegistry().register(sf2Bank);
         setSf2Name(file.name);
       } catch (err) {
-        console.error('SF2 load error:', err);
-        setLoadError(`SF2 読み込みエラー: ${err instanceof Error ? err.message : String(err)}`);
+        console.error("SF2 load error:", err);
+        setLoadError(
+          `SF2 読み込みエラー: ${err instanceof Error ? err.message : String(err)}`,
+        );
       } finally {
         setLoadingAsset(null);
       }
     },
-    [getRegistry]
+    [getRegistry],
   );
 
   // ── NDS ROM Loading ──
+  const selectSdat = useCallback(
+    (path: string) => {
+      if (ndsBuffer.current && path) {
+        const ndsBank = new NDSInstrumentBank(ndsBuffer.current, path);
+        getRegistry().register(ndsBank);
+      }
+    },
+    [getRegistry],
+  );
   const handleNDSLoad = useCallback(
     async (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
       if (!file) return;
 
-      setLoadingAsset('NDS ROM');
+      setLoadingAsset("NDS ROM");
       setLoadError(null);
 
       try {
         const buffer = await file.arrayBuffer();
-        const ndsBank = new NDSInstrumentBank();
-        await ndsBank.load(buffer);
-        getRegistry().register(ndsBank);
+        const sdats = NDSInstrumentBank.parseRom(buffer);
+        ndsBuffer.current = buffer;
+        setNdsSdats(sdats);
+        setSelectedNdsSdat(sdats[0]);
+        selectSdat(sdats[0]);
         setNdsName(file.name);
       } catch (err) {
-        console.error('NDS ROM load error:', err);
-        setLoadError(`NDS ROM 読み込みエラー: ${err instanceof Error ? err.message : String(err)}`);
+        console.error("NDS ROM load error:", err);
+        setLoadError(
+          `NDS ROM 読み込みエラー: ${err instanceof Error ? err.message : String(err)}`,
+        );
       } finally {
         setLoadingAsset(null);
       }
     },
-    [getRegistry]
+    [selectSdat],
   );
 
   // ── Build or Rebuild Scheduler from current events ──
@@ -122,7 +140,11 @@ export const AudioPlayer: FC<AudioPlayerProps> = ({
 
     const synth = getSynth();
     const preparedEvents = preparePlaybackEvents(events);
-    const scheduler = new MMLScheduler(synth, preparedEvents, ticksPerWholeNote);
+    const scheduler = new MMLScheduler(
+      synth,
+      preparedEvents,
+      ticksPerWholeNote,
+    );
 
     scheduler.onProgress = (curSec, totalSec) => {
       setCurrentTime(curSec);
@@ -130,7 +152,7 @@ export const AudioPlayer: FC<AudioPlayerProps> = ({
     };
 
     scheduler.onEnded = () => {
-      setPlaybackState('stopped');
+      setPlaybackState("stopped");
       setCurrentTime(0);
     };
 
@@ -141,12 +163,12 @@ export const AudioPlayer: FC<AudioPlayerProps> = ({
 
   // ── Play / Pause / Stop ──
   const handlePlay = useCallback(async () => {
-    if (playbackState === 'playing') return;
+    if (playbackState === "playing") return;
 
     let scheduler = schedulerRef.current;
 
     // If stopped (not paused), rebuild scheduler fresh
-    if (!scheduler || playbackState === 'stopped') {
+    if (!scheduler || playbackState === "stopped") {
       scheduler = buildScheduler();
     }
 
@@ -154,21 +176,23 @@ export const AudioPlayer: FC<AudioPlayerProps> = ({
 
     try {
       await scheduler.play();
-      setPlaybackState('playing');
+      setPlaybackState("playing");
     } catch (err) {
-      console.error('Playback error:', err);
-      setLoadError(`再生エラー: ${err instanceof Error ? err.message : String(err)}`);
+      console.error("Playback error:", err);
+      setLoadError(
+        `再生エラー: ${err instanceof Error ? err.message : String(err)}`,
+      );
     }
   }, [playbackState, buildScheduler]);
 
   const handlePause = useCallback(() => {
     schedulerRef.current?.pause();
-    setPlaybackState('paused');
+    setPlaybackState("paused");
   }, []);
 
   const handleStop = useCallback(() => {
     schedulerRef.current?.stop();
-    setPlaybackState('stopped');
+    setPlaybackState("stopped");
     setCurrentTime(0);
   }, []);
 
@@ -183,7 +207,7 @@ export const AudioPlayer: FC<AudioPlayerProps> = ({
   const formatTime = (sec: number) => {
     const m = Math.floor(sec / 60);
     const s = Math.floor(sec % 60);
-    return `${m}:${s.toString().padStart(2, '0')}`;
+    return `${m}:${s.toString().padStart(2, "0")}`;
   };
 
   const hasEvents = events.length > 0;
@@ -216,17 +240,34 @@ export const AudioPlayer: FC<AudioPlayerProps> = ({
               onChange={handleNDSLoad}
               disabled={loadingAsset !== null}
             />
+            <select
+              value={selectedNdsSdat}
+              onChange={(e) => {
+                setSelectedNdsSdat(e.target.value);
+                selectSdat(e.target.value);
+              }}
+            >
+              {ndsSdats.map((path) => (
+                <option key={path} value={path}>
+                  {path}
+                </option>
+              ))}
+            </select>
           </label>
           {ndsName && <span className="source-badge loaded">✓ {ndsName}</span>}
         </div>
 
         <div className="source-info">
           💡 PSG音源 (@144〜@151) は常に利用可能です。
-          {!sf2Name && !ndsName && ' SF2/ROM が未読み込みの場合、矩形波でフォールバック再生します。'}
+          {!sf2Name &&
+            !ndsName &&
+            " SF2/ROM が未読み込みの場合、矩形波でフォールバック再生します。"}
         </div>
 
         {loadingAsset && (
-          <div className="loading-indicator">⏳ {loadingAsset} を読み込み中...</div>
+          <div className="loading-indicator">
+            ⏳ {loadingAsset} を読み込み中...
+          </div>
         )}
         {loadError && <div className="audio-error">{loadError}</div>}
       </div>
@@ -234,7 +275,7 @@ export const AudioPlayer: FC<AudioPlayerProps> = ({
       {/* Transport Controls */}
       <div className="transport-controls">
         <div className="transport-buttons">
-          {playbackState !== 'playing' ? (
+          {playbackState !== "playing" ? (
             <button
               type="button"
               className="transport-btn play-btn"
@@ -259,7 +300,7 @@ export const AudioPlayer: FC<AudioPlayerProps> = ({
             type="button"
             className="transport-btn stop-btn"
             onClick={handleStop}
-            disabled={playbackState === 'stopped'}
+            disabled={playbackState === "stopped"}
             title="停止"
           >
             ⏹

@@ -30,6 +30,15 @@ export function sbDetuneToCents(detune: number): number {
  * A=19: ~0.625s (quarter note at BPM 96)
  * A=39: ~0.3125s (eighth note at BPM 96)
  * A=127: ~0.001s (instantaneous)
+ *
+ * NOTE:
+ * SmileBASIC2がNintendoDSの仕様に合わせてエンベロープのパラメータの仕様を決定していた
+ * かつ SmileBASIC3は2の仕様を引き継いだ と仮定した場合、
+ * 上記の実測値を再現するよりも、
+ * NDSInstrumentBank.getAttackSeconds を使った方がより正確な再現になっている可能性がある
+ * (decay, sustain, release も同様)
+ *
+ * しかし一方でNDS ROMを使用せずに再生するMMLプレイヤーがNDSの解析データに依存した動作をするというのはちょっと嫌だなという気持ちもある
  */
 export function sbAttackToSeconds(a: number): number {
   if (a >= 127) return 0.001;
@@ -40,6 +49,8 @@ export function sbAttackToSeconds(a: number): number {
 
 /**
  * Convert SmileBASIC 3 Decay value (0-127) to seconds
+ * 
+ * TODO: I think this is inaccurate
  */
 export function sbDecayToSeconds(d: number): number {
   if (d >= 127) return 0.001;

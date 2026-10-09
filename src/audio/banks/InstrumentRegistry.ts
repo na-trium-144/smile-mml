@@ -19,7 +19,8 @@ export class InstrumentRegistry {
   constructor() {
     // PSG bank is always available as core hardware emulator
     this.psgBank = new PSGInstrumentBank();
-    this.banks.push(this.psgBank);
+    // this.banks.push(this.psgBank);
+    // TODO: commented out for debugging NDSInstrumentBank.
   }
 
   /**
@@ -66,8 +67,11 @@ export class InstrumentRegistry {
     // 1. Search registered banks (NDS > SF2 > PSG)
     for (let i = this.banks.length - 1; i >= 0; i--) {
       const bank = this.banks[i];
+      console.log(bank, "has program", program, bank.hasProgram(program))
       if (bank.hasProgram(program)) {
         const voice = bank.getVoice(program, noteNumber, velocity);
+        // console.log(voice)
+        // TODO: should catch Error instead of checking null, for easier debugging of fallback reason
         if (voice) {
           return voice;
         }
@@ -75,28 +79,29 @@ export class InstrumentRegistry {
     }
 
     // 2. If program is @144-@151, always use PSG bank
-    if (this.psgBank.hasProgram(program)) {
-      const psgVoice = this.psgBank.getVoice(program, noteNumber, velocity);
-      if (psgVoice) return psgVoice;
-    }
+    // if (this.psgBank.hasProgram(program)) {
+    //   const psgVoice = this.psgBank.getVoice(program, noteNumber, velocity);
+    //   if (psgVoice) return psgVoice;
+    // }
 
     // 3. Graceful fallback when no SF2/ROM is loaded for @0-@127/128/129:
     // Generate a gentle musical periodic wave so playback still produces audible preview
-    const fallbackVoice: PeriodicVoiceData = {
-      kind: 'periodic',
-      duty: 0.5,
-      real: this.fallbackHarmonics.real,
-      imag: this.fallbackHarmonics.imag,
-      defaultEnvelope: {
-        attackTime: 0.01,
-        decayTime: 0.2,
-        sustainLevel: 0.5,
-        releaseTime: 0.1,
-      },
-      defaultPan: 0,
-      attenuation: 0.6,
-    };
+    // const fallbackVoice: PeriodicVoiceData = {
+    //   kind: 'periodic',
+    //   duty: 0.5,
+    //   real: this.fallbackHarmonics.real,
+    //   imag: this.fallbackHarmonics.imag,
+    //   defaultEnvelope: {
+    //     attackTime: 0.01,
+    //     decayTime: 0.2,
+    //     sustainLevel: 0.5,
+    //     releaseTime: 0.1,
+    //   },
+    //   defaultPan: 0,
+    //   attenuation: 0.6,
+    // };
 
-    return fallbackVoice;
+    // return fallbackVoice;
+    throw new Error(`voice for ${program} not found`)
   }
 }
