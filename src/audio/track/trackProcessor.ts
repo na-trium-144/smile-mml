@@ -75,7 +75,7 @@ export function preparePlaybackEvents(events: Iterable<MMLEvent>): PreparedEvent
       // Same-pitch tie: contiguous ticks and identical pitch
       if (
         prev &&
-        (prev.isTie || curr.isTie) &&
+        prev.isTie &&
         prev.noteNumber === curr.noteNumber &&
         prev.tick + prev.duration === curr.tick
       ) {

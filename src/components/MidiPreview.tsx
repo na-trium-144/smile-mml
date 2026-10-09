@@ -188,10 +188,15 @@ export const MidiPreview: FC<MidiPreviewProps> = ({
                       </td>
                       <td className="details-cell">
                         {ev.type === 'note' && (
-                          <span>
+                          <>
+                          <div>
                             <strong>{ev.noteName}</strong> (#{ev.noteNumber}) | 長さ:{ev.duration} |
                             Vel:{ev.velocity} | Vol:{ev.volume} | Pan:{ev.pan} | @{ev.program}
-                          </span>
+                          </div>
+                          <pre style={{ whiteSpace: "pre-wrap", overflowWrap: "break-word", width: 800 }}>
+                            {JSON.stringify(ev)}
+                          </pre>
+                          </>
                         )}
                         {ev.type === 'tempo' && <span>BPM: {ev.bpm}</span>}
                         {ev.type === 'program' && <span>プログラム: @{ev.program}</span>}
