@@ -162,7 +162,7 @@ export class SynthEngine {
     }
 
     // 4. Schedule ADSR envelope
-    EnvelopeHelper.scheduleADSR(
+    const releaseTime = EnvelopeHelper.scheduleADSR(
       gainNode.gain,
       envelope,
       peakGain,
@@ -172,7 +172,7 @@ export class SynthEngine {
     );
 
     // 5. Total stop time calculation
-    const totalDuration = gateDurationSec + envelope.releaseTime + 0.05;
+    const totalDuration = gateDurationSec + releaseTime + 0.05;
     const stopTime = startTime + totalDuration;
 
     // 6. Modulation LFO

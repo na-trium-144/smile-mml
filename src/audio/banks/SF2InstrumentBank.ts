@@ -65,11 +65,22 @@ const header = voice.sampleHeader;
     const sustainVolEnv = gen.get("sustainVolEnv") ?? 0; // centibels
     const releaseVolEnv = gen.get("releaseVolEnv") ?? -12000;
 
+// https://www.synthfont.com/sfspec24.pdf
+// SF2 spec (decayVolEnv/decayModEnv/releaseVolEnv/releaseModEnv):
+// both the decay and release phase timecent values are defined as
+// "the time ... for a 100dB decrease in level, or a 100% decrease in
+// filter cutoff frequency ... from the maximum value to the minimum
+// value" (decay), and "the time spent in release phase until 100dB
+// attenuation [or, for the Modulation Envelope, zero value] were reached"
+// starting from full scale (release). Both reference the same 100dB/100%
+// change from full scale, so decay and release share one curve constant
+// — used identically across every cache mode ("none"/"ads"/"adsr"/
+// "segment"/"full") for both the Volume and Modulation envelopes.
     const defaultEnvelope: ADSRParams = {
       attackTime: Math.max(0.001, timecentToSeconds(attackVolEnv)),
-      decayTime: Math.max(0.001, timecentToSeconds(decayVolEnv)),
+      decayRate: centibelsToGain(-1000 / timecentToSeconds(decayVolEnv)),
       sustainLevel: centibelsToGain(sustainVolEnv),
-      releaseTime: Math.max(0.01, timecentToSeconds(releaseVolEnv)),
+      releaseRate: centibelsToGain(-1000 / timecentToSeconds(releaseVolEnv)),
     };
 
     // Loop flag: SF2 sampleModes (1: loop continuously, 3: loop during sustain)

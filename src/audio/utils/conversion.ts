@@ -3,15 +3,18 @@
  * Implements SmileBASIC 3 MML specifications and SoundFont/MIDI standards
  */
 
-import type { ADSRParams } from '../types.js';
-import type { EnvelopeParams, ModulationParams } from '../../parser/types.js';
-import { NDSInstrumentBank } from '../banks/NDSInstrumentBank.js';
+import type { ADSRParams } from "../types.js";
+import type { EnvelopeParams, ModulationParams } from "../../parser/types.js";
+import { NDSInstrumentBank } from "../banks/NDSInstrumentBank.js";
 
 /**
  * Convert MIDI note number and cents to frequency in Hertz
  * A4 = 440Hz, note 69
  */
-export function midiNoteToFrequency(noteNumber: number, detuneCents: number = 0): number {
+export function midiNoteToFrequency(
+  noteNumber: number,
+  detuneCents: number = 0,
+): number {
   return 440 * Math.pow(2, (noteNumber - 69 + detuneCents / 100) / 12);
 }
 
@@ -23,79 +26,31 @@ export function sbDetuneToCents(detune: number): number {
 }
 
 /**
+ * Convert SmileBASIC @E envelope to physical ADSR parameters
+ *
  * Convert SmileBASIC 3 Attack value (0-127) to seconds
- * Smaller values mean longer attack times.
- * Verification data based on MML_spec.md:
+ *
+ * SmileBASIC2がNintendoDSの仕様に合わせてエンベロープのパラメータの仕様を決定していた
+ * かつ SmileBASIC3は2の仕様を引き継いだ と推測し、
+ * NDSInstrumentBank (NitroFS) の変換テーブルを用いる。
+ *
+ * 特にattackに関してはSmileBASIC3で実測した値とほぼ合致:
  * A=4: ~2.5s (whole note at BPM 96)
  * A=9: ~1.25s (half note at BPM 96)
  * A=19: ~0.625s (quarter note at BPM 96)
  * A=39: ~0.3125s (eighth note at BPM 96)
- * A=127: ~0.001s (instantaneous)
+ * A=127: instantaneous
  */
-export function sbAttackToSeconds(a: number): number {
-  if (a >= 127) return 0.001;
-  if (a <= 0) a = 0;
-  // Curve: 10 / (a + 0.01) matches a=4 -> 2.5s, a=19 -> 0.52s, a=39 -> 0.25s closely
-  return 12.5 / (a+1);
-}
-
-/**
- * Convert SmileBASIC 3 Decay value (0-127) to seconds
- * 
- * TODO: I think this is inaccurate
- */
-export function sbDecayToSeconds(d: number): number {
-  return sbReleaseToSeconds(d);
-}
-
-/**
- * Convert SmileBASIC 3 Sustain value (0-127) to linear level (0.0 - 1.0)
- */
-export function sbSustainToLevel(s: number): number {
-  return Math.max(0, Math.min(1, s / 127));
-}
-
-/**
- * Convert SmileBASIC 3 Release value (0-127) to seconds
- * Verification data based on MML_spec.md:
- * R=91 (diff 36): ~2.5s (whole note at BPM 96)
- * R=103 (diff 24): ~1.25s (half note at BPM 96)
- * R=114 (diff 13): ~0.625s (quarter note at BPM 96)
- * R=120 (diff 7): ~0.3125s (eighth note at BPM 96)
- * R=127: ~0.01s
- */
-export function sbReleaseToSeconds(r: number): number {
-  if (r >= 127) r = 127;
-  if (r <= 0) r = 0;
-  return 0.00545 * Math.pow(127 - r, 1.71);
-}
-
-/**
- * Convert full SmileBASIC @E envelope to physical ADSR parameters
- * 
- * NOTE:
- * SmileBASIC2がNintendoDSの仕様に合わせてエンベロープのパラメータの仕様を決定していた
- * かつ SmileBASIC3は2の仕様を引き継いだ と仮定した場合、
- * 上記の実測値を再現するよりも、
- * NDSInstrumentBank.getAttackSeconds を使った方がより正確な再現になっている可能性がある
- * (decay, sustain, release も同様)
- *
- * しかし一方でNDS ROMを使用せずに再生するMMLプレイヤーがNDSの解析データに依存した動作をするというのはちょっと嫌だなという気持ちもある
- * 
- * 実際に試してみたけどなんかちょっと違う?
- */
-export function convertSmileBASICEnvelope(envelope: EnvelopeParams): ADSRParams {
-  // return {
-  //   attackTime: NDSInstrumentBank.getAttackSeconds(envelope.a),
-  //     sustainLevel: NDSInstrumentBank.getSustainLevel(envelope.s),
-  //     decayTime: NDSInstrumentBank.getDecaySeconds(envelope.d, envelope.s),
-  //     releaseTime: NDSInstrumentBank.getReleaseSeconds(envelope.r, envelope.s)
-  // }
+export function convertSmileBASICEnvelope(
+  envelope: EnvelopeParams,
+): ADSRParams {
   return {
-    attackTime: sbAttackToSeconds(envelope.a),
-    decayTime: sbDecayToSeconds(envelope.d),
-    sustainLevel: sbSustainToLevel(envelope.s),
-    releaseTime: sbReleaseToSeconds(envelope.r),
+    attackTime: NDSInstrumentBank.getAttackSeconds(envelope.a),
+    sustainLevel: NDSInstrumentBank.convertVolume2(
+      NDSInstrumentBank.convertSustain(envelope.s),
+    ),
+    decayRate: NDSInstrumentBank.getFallRate(envelope.d),
+    releaseRate: NDSInstrumentBank.getFallRate(envelope.r),
   };
 }
 
@@ -103,7 +58,7 @@ export function convertSmileBASICEnvelope(envelope: EnvelopeParams): ADSRParams 
  * Modulation configuration derived from SmileBASIC @MA, @MP, @ML parameters
  */
 export interface ActiveModulationConfig {
-  type: 'tremolo' | 'vibrato' | 'autoPan';
+  type: "tremolo" | "vibrato" | "autoPan";
   delaySeconds: number; // seconds before modulation starts
   frequencyHz: number; // LFO frequency
   depth: number; // normalized depth
@@ -111,7 +66,10 @@ export interface ActiveModulationConfig {
 
 /**
  * Resolve active modulation from MML modulation parameters
- * Specifications from MML_spec.md:
+ * 
+ * SmileBASIC3での実測値をもとにしている。
+ * SmileBASIC2とは仕様が異なることが知られているので、ここではnitro-fsは用いない。
+ * 
  * - Delay: Delay * 0.01953125s (128th note at BPM 96)
  * - Speed: Speed / 2.5 Hz (period is (Speed)th note at BPM 96; 0 means no effect)
  * - @ML AutoPan: +/- (Depth * Range / 2) on 0-127 pan scale -> normalized (+/- 0 to 1)
@@ -119,12 +77,12 @@ export interface ActiveModulationConfig {
  * - @MP Vibrato: +/- (Depth * Range / 128) semitones
  */
 export function resolveModulationConfig(
-  mod: ModulationParams
+  mod: ModulationParams,
 ): ActiveModulationConfig | null {
   if (!mod.enabled) return null;
 
   let target: {
-    type: 'tremolo' | 'vibrato' | 'autoPan';
+    type: "tremolo" | "vibrato" | "autoPan";
     depth: number;
     range: number;
     speed: number;
@@ -132,11 +90,11 @@ export function resolveModulationConfig(
   } | null = null;
 
   if (mod.autoPan.enabled) {
-    target = { type: 'autoPan', ...mod.autoPan };
+    target = { type: "autoPan", ...mod.autoPan };
   } else if (mod.tremolo.enabled) {
-    target = { type: 'tremolo', ...mod.tremolo };
+    target = { type: "tremolo", ...mod.tremolo };
   } else if (mod.vibrato.enabled) {
-    target = { type: 'vibrato', ...mod.vibrato };
+    target = { type: "vibrato", ...mod.vibrato };
   }
 
   if (!target || target.speed <= 0 || target.depth <= 0) {
@@ -147,13 +105,13 @@ export function resolveModulationConfig(
   const frequencyHz = target.speed / 2.5;
 
   let depth = 0;
-  if (target.type === 'autoPan') {
+  if (target.type === "autoPan") {
     // Amplitude +/- (Depth * Range / 2) on 0-127 scale -> 0.0 to 1.0 pan
     depth = Math.min(1.0, (target.depth * target.range) / (2 * 64));
-  } else if (target.type === 'tremolo') {
+  } else if (target.type === "tremolo") {
     // Gain reduction ratio (0.0 to 1.0)
     depth = Math.min(1.0, (target.depth * target.range) / (2 * 127));
-  } else if (target.type === 'vibrato') {
+  } else if (target.type === "vibrato") {
     // Semitones: (Depth * Range / 128)
     depth = (target.depth * target.range) / 128;
   }

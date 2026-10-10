@@ -9,9 +9,9 @@ import type { EnvelopeParams, ModulationParams } from '../parser/types.js';
  */
 export interface ADSRParams {
   attackTime: number; // in seconds
-  decayTime: number; // in seconds
+  decayRate: number; // gain falls at a rate of 1/decayRate per seconds
   sustainLevel: number; // 0.0 - 1.0 (linear gain ratio)
-  releaseTime: number; // in seconds
+  releaseRate: number; // gain falls at a rate of 1/releaseRate per seconds
 }
 
 /**

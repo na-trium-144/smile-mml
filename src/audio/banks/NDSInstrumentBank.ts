@@ -26,7 +26,6 @@ import {
   PSG_DUTY_CYCLES,
 } from "../utils/waveformGenerator.js";
 import { generateLFSRNoise } from "../utils/noiseGenerator.js";
-import { sbAttackToSeconds, sbDecayToSeconds, sbReleaseToSeconds, sbSustainToLevel } from "../utils/conversion.js";
 
 export class NDSInstrumentBank implements InstrumentBank {
   public readonly name: string = "Nintendo DS ROM";
@@ -127,8 +126,8 @@ export class NDSInstrumentBank implements InstrumentBank {
       }
     }
 
-    console.log(this.sbnkList)
-    console.log(this.swarList)
+    console.log(this.sbnkList);
+    console.log(this.swarList);
   }
 
   public hasProgram(program: number): boolean {
@@ -148,13 +147,13 @@ export class NDSInstrumentBank implements InstrumentBank {
     _velocity: number,
   ): VoiceData {
     if (!this.sdat || this.sbnkList.length === 0) {
-      throw new Error("sdat is empty")
+      throw new Error("sdat is empty");
     }
 
     const mainBank = this.sbnkList[0];
     const inst = mainBank.instruments[program];
     if (!inst) {
-      throw new Error(`inst for program ${program} not found`)
+      throw new Error(`inst for program ${program} not found`);
     }
 
     // Handle DirectInstrument
@@ -173,11 +172,11 @@ export class NDSInstrumentBank implements InstrumentBank {
         const item = drumSet.instruments[noteNumber - drumSet.lowerKey];
         if (item) {
           return this.buildSampleVoice(item.noteInfo);
-        }else{
-          throw new Error(`instrument not found for note number ${noteNumber}`)
+        } else {
+          throw new Error(`instrument not found for note number ${noteNumber}`);
         }
-      }else{
-        throw new Error(`unsupported note number ${noteNumber}`)
+      } else {
+        throw new Error(`unsupported note number ${noteNumber}`);
       }
     }
 
@@ -193,12 +192,10 @@ export class NDSInstrumentBank implements InstrumentBank {
         }
       }
       const item = keySplit.instruments[regionIndex];
-      if (
-        item 
-      ) {
+      if (item) {
         return this.buildSampleVoice(item.noteInfo);
-      }else{
-        throw new Error(`instrument not found for note number ${noteNumber}`)
+      } else {
+        throw new Error(`instrument not found for note number ${noteNumber}`);
       }
     }
 
@@ -236,10 +233,8 @@ export class NDSInstrumentBank implements InstrumentBank {
         attenuation: 0.8,
       };
       return voice;
-    }
-
-    else {
-      throw new Error(`unsupported inst type ${inst.type}`)
+    } else {
+      throw new Error(`unsupported inst type ${inst.type}`);
     }
   }
 
@@ -251,12 +246,12 @@ export class NDSInstrumentBank implements InstrumentBank {
 
     const swar = this.swarList[swarIndex] || this.swarList[0];
     if (!swar) {
-      throw new Error("!swar")
+      throw new Error("!swar");
     }
 
     const swav = swar.waves[waveIndex];
     if (!swav) {
-      throw new Error("!swav")
+      throw new Error("!swav");
     }
 
     const cacheKey = `${swarIndex}:${waveIndex}`;
@@ -298,28 +293,16 @@ export class NDSInstrumentBank implements InstrumentBank {
   ): ADSRParams {
     return {
       attackTime: NDSInstrumentBank.getAttackSeconds(noteInfo.attack),
-      sustainLevel: NDSInstrumentBank.convertVolume(
+      sustainLevel: NDSInstrumentBank.convertVolume2(
         NDSInstrumentBank.convertSustain(noteInfo.sustain),
       ),
-      decayTime: NDSInstrumentBank.getDecaySeconds(
-        noteInfo.decay,
-        noteInfo.sustain,
-      ),
-      releaseTime: NDSInstrumentBank.getReleaseSeconds(
-        noteInfo.release,
-        noteInfo.sustain,
-      ),
+      decayRate: NDSInstrumentBank.getFallRate(noteInfo.decay),
+      releaseRate: NDSInstrumentBank.getFallRate(noteInfo.release),
     };
-    // return {
-    //   attackTime: sbAttackToSeconds(noteInfo.attack),
-    //   sustainLevel: sbSustainToLevel(noteInfo.sustain),
-    //   decayTime: sbDecayToSeconds(noteInfo.decay),
-    //   releaseTime: sbReleaseToSeconds(noteInfo.release)
-    // }
   }
 
   private static readonly TICK_INTERVAL_MS = (64 * 2728 * 1000) / 33513982;
-  private static readonly MIN_GAIN = -92544; // 完全消音レベル (0.0 に対応)
+  static readonly MIN_GAIN = -92544; // 完全消音レベル (0.0 に対応)
 
   private static readonly ATTACKRATE_TABLE = [
     255, 254, 253, 252, 251, 250, 249, 248, 247, 246, 245, 244, 243, 242, 241,
@@ -387,78 +370,23 @@ export class NDSInstrumentBank implements InstrumentBank {
     let ticks = 0;
     let gain = NDSInstrumentBank.MIN_GAIN;
 
-    // 元コードのように round(rate*gain/255), gain<0 では、gain=-1で止まってしまう。しかし元コードは問題なく再生できている。なぜ
-    while (gain <= -1) {
-      gain = (rate * gain) / 255;
+    // 元コードのように round(rate*gain/255) では、gain=-1で止まってしまう。
+    // 256で割ってceilに変更するとリンク先の資料の数値とぴったり合う
+    while (gain < 0) {
+      gain = Math.ceil((rate * gain) / 256);
       ticks++;
-      // 無限ループ防止用のガード (実質的に消音のまま終了しないケース)
-      if (ticks > 100000) break;
     }
 
     return (ticks * NDSInstrumentBank.TICK_INTERVAL_MS) / 1000;
   }
 
-  /**
-   * Decay (秒数) に変換
-   * Decayフェーズは毎tick: gain -= decayRate
-   * peak (0dB = 0) から sustainLevel までの減衰にかかる時間を計算します。
-   *
-   * @param decayRate raw decay value (0..127)
-   * @param sustainLevel raw sustain value (0..127)
-   * @returns 秒数
-   */
-  public static getDecaySeconds(
-    decayRate: number,
-    sustainLevel: number,
-  ): number {
-    const fallRate = NDSInstrumentBank.convertFall(decayRate);
-    const sustainDb = NDSInstrumentBank.convertSustain(sustainLevel); // 0 ～ -92544 の値
-
-    if (fallRate <= 0) return 0;
-
-    // 0 から sustainDb まで毎tick `fallRate` ずつ減衰する
-    // 減衰差分: Math.abs(sustainDb)
-    const targetDrop = Math.abs(sustainDb);
-    const ticks = targetDrop / fallRate;
-    // const ticks =
-    //   (1 - NDSInstrumentBank.convertVolume(sustainDb)) /
-    //   Math.max(0.001, 1 - NDSInstrumentBank.convertVolume(-fallRate));
-
-    return (ticks * NDSInstrumentBank.TICK_INTERVAL_MS) / 1000;
+  static getFallRate(raw: number){
+    const fallRate = NDSInstrumentBank.convertFall(raw);
+    // 毎tick `fallRate` ずつ減衰する
+    return NDSInstrumentBank.convertVolume2(fallRate / (NDSInstrumentBank.TICK_INTERVAL_MS / 1000));
   }
 
-  /**
-   * Release (秒数) に変換
-   * Releaseフェーズは毎tick: gain -= releaseRate
-   * sustainLevel から 完全消音 (-92544) までの減衰にかかる時間を計算します。
-   * Web Audio API などの標準的なADSRでは「ピーク(0dB)から完全消音までの時間」として
-   * 定義することが多いため、用途に応じて使い分けられます。
-   *
-   * @param releaseRate raw release value (0..127)
-   * @param sustainLevel raw sustain value (0..127) - 省略時は peak (0dB) から計算
-   * @returns 秒数
-   */
-  public static getReleaseSeconds(
-    releaseRate: number,
-    sustainLevel: number = 127,
-  ): number {
-    const fallRate = NDSInstrumentBank.convertFall(releaseRate);
-    const currentDb = NDSInstrumentBank.convertSustain(sustainLevel);
-    const targetDb = NDSInstrumentBank.MIN_GAIN;
-
-    if (fallRate <= 0) return 0;
-
-    // currentDb から -92544 まで減衰する差分
-    const dropAmount = Math.abs(targetDb - currentDb);
-    const ticks = dropAmount / fallRate;
-    // const ticks =
-    //   (NDSInstrumentBank.convertVolume(currentDb) -
-    //     NDSInstrumentBank.convertVolume(targetDb)) /
-    //   Math.max(0.001, NDSInstrumentBank.convertVolume(currentDb) - NDSInstrumentBank.convertVolume(currentDb-fallRate));
-
-    return (ticks * NDSInstrumentBank.TICK_INTERVAL_MS) / 1000;
-  }
-
+  /*
   private static _volumeTable = [
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
@@ -505,5 +433,14 @@ export class NDSInstrumentBank implements InstrumentBank {
   }
   public static convertVolume(volume: number): number {
     return NDSInstrumentBank.GetChannelVolume(volume) / 127;
+  }
+  */
+
+  /**
+   * 上記の変換テーブルとほぼ同じ値になるよう調整した数式
+   * (かなり綺麗になった)
+   */
+  static convertVolume2(volume: number): number {
+    return Math.pow(10, volume / 0x80 / 200);
   }
 }

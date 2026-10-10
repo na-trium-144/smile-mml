@@ -19,12 +19,12 @@ export class PSGInstrumentBank implements InstrumentBank {
   private noisePcm: Float32Array;
   private readonly sampleRate = 44100;
 
-  // Default envelope for PSG: instant attack, full sustain, tiny release to avoid clicks
+  // Default envelope for PSG: instant attack, full sustain, instant release
   private readonly defaultPsgEnvelope: ADSRParams = {
-    attackTime: 0.002,
-    decayTime: 0.01,
+    attackTime: 0,
+    decayRate: 0,
     sustainLevel: 1.0,
-    releaseTime: 0.02,
+    releaseRate: Infinity,
   };
 
   constructor() {
