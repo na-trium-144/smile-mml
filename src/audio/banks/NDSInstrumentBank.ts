@@ -6,9 +6,9 @@
 
 /*
 includes GPL/LGPL code from
-https://github.com/DanielPXL/nitro-play/blob/master/src/core/AudioWorker.ts
-https://github.com/DanielPXL/nitro-fs/blob/master/src/Formats/Audio/SequenceRenderer/ADSRConverter.ts
-https://github.com/DanielPXL/nitro-fs/blob/master/src/Formats/Audio/SequenceRenderer/Envelope.ts
+https://github.com/DanielPXL/nitro-play/blob/c9fa762f9bfe180e5bb78a4c41bf9a400d25ad87/src/core/AudioWorker.ts
+https://github.com/DanielPXL/nitro-fs/blob/e5961d694fcfbabf6995886e11caa9f1bf8f0a41/src/Formats/Audio/SequenceRenderer/ADSRConverter.ts
+https://github.com/DanielPXL/nitro-fs/blob/e5961d694fcfbabf6995886e11caa9f1bf8f0a41/src/Formats/Audio/SequenceRenderer/Envelope.ts
 https://github.com/DanielPXL/nitro-fs/blob/e5961d694fcfbabf6995886e11caa9f1bf8f0a41/src/Formats/Audio/SequenceRenderer/Kermalis.VGMS.Utils.ts
 */
 

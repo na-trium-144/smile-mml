@@ -4,7 +4,9 @@
  * General MIDI melody instruments (@0-@127) and drum sets (@128, @129).
  */
 
-// https://github.com/marmooo/midy/blob/main/src/base-player.ts を参考にしました
+// https://github.com/marmooo/midy/blob/a20d82520626b40dbaab8fb82c94747535ea9410/src/base-player.ts
+// https://github.com/marmooo/midy/blob/a20d82520626b40dbaab8fb82c94747535ea9410/src/midy-GM2.ts#L267
+// を参考にしました
 
 import { GeneratorStore, parse, SoundFont } from '@marmooo/soundfont';
 import type { InstrumentBank } from './InstrumentBank.js';
