@@ -30,6 +30,7 @@ export class EnvelopeHelper {
     const minLevel = NDSInstrumentBank.convertVolume2(
       NDSInstrumentBank.MIN_GAIN,
     );
+    peakGain = Math.max(0.001, peakGain);
 
     const attack = Math.max(0.001, envelope.attackTime);
     const sustainLevel = Math.max(
