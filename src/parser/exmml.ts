@@ -34,13 +34,12 @@ export function extractMacro(mml: string, tag: string): string {
   let r = mml.slice(start, end);
 
   // Escape sequence handling matching EXMML$
-  // Characters to check: ();'/ n\
   let j = 0;
   let k = r.length - 2;
 
   const findNext = (fromIdx: number): number => {
     const p1 = r.indexOf('\\', fromIdx);
-    const p2 = r.indexOf(' ', fromIdx);
+    const p2 = r.indexOf('\x7f', fromIdx);
     const p3 = r.indexOf('/', fromIdx);
 
     const minValid = (a: number, b: number): number => {
@@ -59,7 +58,7 @@ export function extractMacro(mml: string, tag: string): string {
       const nextChar = matchIdx + 1 < r.length ? r[matchIdx + 1] : '';
 
       if (charAtI !== '/') {
-        const pTable = "();'/ n\\";
+        const pTable = "();'/\x7fn\\";
         const p = pTable.indexOf(nextChar);
         if (p === 0) {
           // \( -> \{
@@ -79,13 +78,13 @@ export function extractMacro(mml: string, tag: string): string {
           j = matchIdx + 1;
         } else if (p === 4) {
           // \/ -> \/
-          if (charAtI !== ' ') {
+          if (charAtI !== '\x7f') {
             r = r.slice(0, matchIdx) + '\\/' + r.slice(matchIdx + 2);
             j = matchIdx + 1;
           }
         } else if (p === 5) {
-          // \  -> \ 
-          r = r.slice(0, matchIdx) + '\\ ' + r.slice(matchIdx + 2);
+          // \\x7f -> \\x7f
+          r = r.slice(0, matchIdx) + '\\\x7f' + r.slice(matchIdx + 2);
           j = matchIdx + 1;
         } else if (p === 6) {
           // \n -> \LF
