@@ -8,9 +8,9 @@ importers:
 
   .:
     dependencies:
-      '@marmooo/soundfont-parser':
-        specifier: ^0.1.9
-        version: 0.1.9
+      '@marmooo/soundfont':
+        specifier: ^0.3.4
+        version: 0.3.4
       nitro-fs:
         specifier: ^1.1.1
         version: 1.1.1
@@ -204,8 +204,8 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@marmooo/soundfont-parser@0.1.9':
-    resolution: {integrity: sha512-Qy9+8rzujikM/RN+gW8/VUw8V966L9OXeJ6lkMUHRNxjtNJFMLCvhIoz9IkkoYCQG1J5566p9vkhZbrsi58LrA==}
+  '@marmooo/soundfont@0.3.4':
+    resolution: {integrity: sha512-8dUfmJV+vLAsmxcbcwABEzzX5vA/wl9Ac3w0znBijkBFMvCe1twpfSQygK8qNvExvIbQ3ecvP615MK58VpZCMA==}
 
   '@oxc-project/types@0.152.0':
     resolution: {integrity: sha512-oM/5rLBm2tPkg0iBgkH/FOeR3PCDpY19GTgAZjMFM8h9WI9VW7cLgzp6nwtarYKmovavIQZ+Fe/RKX/8C8O/Rw==}
@@ -751,7 +751,7 @@ snapshots:
   '@esbuild/win32-x64@0.28.2':
     optional: true
 
-  '@marmooo/soundfont-parser@0.1.9': {}
+  '@marmooo/soundfont@0.3.4': {}
 
   '@oxc-project/types@0.152.0': {}
 

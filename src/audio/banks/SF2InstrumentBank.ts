@@ -4,7 +4,7 @@
  * General MIDI melody instruments (@0-@127) and drum sets (@128, @129).
  */
 
-import { parse, SoundFont } from '@marmooo/soundfont-parser';
+import { GeneratorStore, parse, SoundFont } from '@marmooo/soundfont';
 import type { InstrumentBank } from './InstrumentBank.js';
 import type { VoiceData, ADSRParams } from '../types.js';
 import { timecentToSeconds, centibelsToGain } from '../utils/conversion.js';
@@ -54,21 +54,14 @@ export class SF2InstrumentBank implements InstrumentBank {
       return null;
     }
 
-    const sampleId = voice.generators.sampleID ?? 0;
-    let pcm = this.pcmCache.get(sampleId);
-    if (!pcm) {
-      pcm = voice.sample.decodePCM(voice.sample.data);
-      this.pcmCache.set(sampleId, pcm);
-    }
+const header = voice.sampleHeader;
+    const gen = voice.generators; // GeneratorStore
 
-    const header = voice.sampleHeader;
-    const gen = voice.generators;
-
-    // SF2 envelopes in timecents (-12000 is ~1ms, 0 is 1s, etc.)
-    const attackVolEnv = gen.attackVolEnv ?? -12000;
-    const decayVolEnv = gen.decayVolEnv ?? -12000;
-    const sustainVolEnv = gen.sustainVolEnv ?? 0; // centibels
-    const releaseVolEnv = gen.releaseVolEnv ?? -12000;
+    // SF2 envelopes in timecents (gen.get() を使用)
+    const attackVolEnv = gen.get("attackVolEnv") ?? -12000;
+    const decayVolEnv = gen.get("decayVolEnv") ?? -12000;
+    const sustainVolEnv = gen.get("sustainVolEnv") ?? 0; // centibels
+    const releaseVolEnv = gen.get("releaseVolEnv") ?? -12000;
 
     const defaultEnvelope: ADSRParams = {
       attackTime: Math.max(0.001, timecentToSeconds(attackVolEnv)),
@@ -78,20 +71,32 @@ export class SF2InstrumentBank implements InstrumentBank {
     };
 
     // Loop flag: SF2 sampleModes (1: loop continuously, 3: loop during sustain)
-    const sampleModes = gen.sampleModes ?? 0;
+    const sampleModes = gen.get("sampleModes") ?? 0;
     const hasLoop = (sampleModes === 1 || sampleModes === 3) && header.loopEnd > header.loopStart;
 
     // Root key override in generator, else from sampleHeader
-    const rootKey = gen.overridingRootKey !== undefined ? gen.overridingRootKey : header.originalPitch;
+    // overridingRootKey が -1 の場合はヘッダーの originalPitch を使う仕様
+    const overridingRootKey = gen.get("overridingRootKey");
+    const rootKey = overridingRootKey === -1 ? header.originalPitch : overridingRootKey;
 
-    // Fine tune from sampleHeader + fineTune generator + coarseTune
-    const fineTune = (header.pitchCorrection || 0) + (gen.fineTune || 0) + (gen.coarseTune || 0) * 100;
+    // Fine tune / Coarse tune の取得
+    const coarseTune = gen.get("coarseTune") * 100;
+    const fineTune = (header.pitchCorrection || 0) + gen.get("fineTune") + coarseTune;
 
-    // Pan: SF2 is -500 (left) to +500 (right)
-    const defaultPan = gen.pan !== undefined ? Math.max(-1, Math.min(1, gen.pan / 500)) : 0;
+    // Pan: SF2 is -500 (left) to +500 (right), あるいは @marmooo/soundfont では -1000~1000 の場合もあるため base-player.ts に合わせる
+    const panVal = gen.get("pan");
+    const defaultPan = panVal !== undefined ? Math.max(-1, Math.min(1, panVal / 1000)) : 0;
 
     // Attenuation in centibels
-    const attenuation = gen.initialAttenuation !== undefined ? centibelsToGain(gen.initialAttenuation) : 1.0;
+    const initialAttenuation = gen.get("initialAttenuation");
+    const attenuation = initialAttenuation !== undefined ? centibelsToGain(initialAttenuation) : 1.0;
+
+    const sampleId = gen.get("sampleID") ?? 0;
+    let pcm = this.pcmCache.get(sampleId);
+    if (!pcm) {
+      pcm = voice.sample.decodePCM(voice.sample.data);
+      this.pcmCache.set(sampleId, pcm);
+    }
 
     return {
       kind: 'sample',

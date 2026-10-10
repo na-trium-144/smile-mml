@@ -11,7 +11,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@marmooo/soundfont-parser": "^0.1.9",
+    "@marmooo/soundfont": "^0.3.4",
     "nitro-fs": "^1.1.1",
     "react": "^19.2.8",
     "react-dom": "^19.2.8"
