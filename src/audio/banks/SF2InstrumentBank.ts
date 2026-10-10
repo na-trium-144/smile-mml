@@ -89,9 +89,22 @@ const header = voice.sampleHeader;
     const panVal = gen.get("pan");
     const defaultPan = panVal !== undefined ? Math.max(-1, Math.min(1, panVal / 1000)) : 0;
 
-    // Attenuation in centibels
+  // EMU8k/10k / FluidSynth compatibility for initialAttenuation.
+  //
+  // SF2.01 defines initialAttenuation in centibels (1 cB = 0.1 dB), and the
+  // final amplitude conversion remains 10^(cb/200) via cbToRatio().
+  // Creative's EMU8000 hardware, however, applied only ~0.4× that scale to the
+  // *static* generator values written in the SoundFont (preset/instrument
+  // zones). Most banks (including GeneralUser GS) were authored against that
+  // EMU response. FluidSynth mirrors the hardware at load time
+  // (fluid_defsfont.c: EMU_ATTENUATION_FACTOR = 0.4 applied to gen.val only).
+  //
+  // Modulator contributions (e.g. default velocity→attenuation amount 960)
+  // are NOT scaled — they stay full-scale, matching FluidSynth.
+  //
+  // effective = staticAtten * 0.4 + (afterModulators - staticAtten)
     const initialAttenuation = gen.get("initialAttenuation");
-    const attenuation = initialAttenuation !== undefined ? centibelsToGain(initialAttenuation) : 1.0;
+    const attenuation = initialAttenuation !== undefined ? centibelsToGain(initialAttenuation * 0.4) : 1.0;
 
     const sampleId = gen.get("sampleID") ?? 0;
     let pcm = this.pcmCache.get(sampleId);
