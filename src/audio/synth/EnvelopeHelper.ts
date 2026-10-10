@@ -29,25 +29,40 @@ export class EnvelopeHelper {
     const sustainLevel = Math.max(0.0, Math.min(1.0, envelope.sustainLevel));
     const release = Math.max(0.005, envelope.releaseTime);
 
+    const sustainGain = peakGain * sustainLevel;
+    // Note off / release phase
+    const releaseStartTime = startTime + gateDuration;
+
     // Initial value
     if (isSlur) {
       // Slur: maintain existing gain level without re-triggering attack
-      gainParam.setValueAtTime(peakGain * sustainLevel, startTime);
+      gainParam.setValueAtTime(sustainGain, startTime);
+
+      // Anchor current value at release point
+      gainParam.setValueAtTime(sustainGain, releaseStartTime);
+      // Release down to silence
+      gainParam.linearRampToValueAtTime(0.00001, releaseStartTime + release);
+
     } else {
       gainParam.setValueAtTime(0, startTime);
       // Attack phase
-      gainParam.linearRampToValueAtTime(peakGain, startTime + attack);
+      if(attack < gateDuration){
+        gainParam.linearRampToValueAtTime(peakGain, startTime + attack);
+
+        // Decay phase to sustain level
+        gainParam.linearRampToValueAtTime(sustainGain, startTime + attack + decay);
+
+        // Anchor current value at release point
+        gainParam.setValueAtTime(sustainGain, releaseStartTime);
+        // Release down to silence
+        gainParam.linearRampToValueAtTime(0.00001, releaseStartTime + release);
+
+      }else{
+        gainParam.linearRampToValueAtTime(peakGain * gateDuration / attack, releaseStartTime);
+
+        // Release down to silence
+        gainParam.linearRampToValueAtTime(0.00001, releaseStartTime + release);
+      }
     }
-
-    // Decay phase to sustain level
-    const sustainGain = peakGain * sustainLevel;
-    gainParam.linearRampToValueAtTime(sustainGain, startTime + attack + decay);
-
-    // Note off / release phase
-    const releaseStartTime = startTime + gateDuration;
-    // Anchor current value at release point
-    gainParam.setValueAtTime(sustainGain, releaseStartTime);
-    // Release down to silence
-    gainParam.linearRampToValueAtTime(0.00001, releaseStartTime + release);
   }
 }

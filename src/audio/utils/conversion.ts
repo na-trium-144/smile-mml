@@ -5,6 +5,7 @@
 
 import type { ADSRParams } from '../types.js';
 import type { EnvelopeParams, ModulationParams } from '../../parser/types.js';
+import { NDSInstrumentBank } from '../banks/NDSInstrumentBank.js';
 
 /**
  * Convert MIDI note number and cents to frequency in Hertz
@@ -30,21 +31,12 @@ export function sbDetuneToCents(detune: number): number {
  * A=19: ~0.625s (quarter note at BPM 96)
  * A=39: ~0.3125s (eighth note at BPM 96)
  * A=127: ~0.001s (instantaneous)
- *
- * NOTE:
- * SmileBASIC2がNintendoDSの仕様に合わせてエンベロープのパラメータの仕様を決定していた
- * かつ SmileBASIC3は2の仕様を引き継いだ と仮定した場合、
- * 上記の実測値を再現するよりも、
- * NDSInstrumentBank.getAttackSeconds を使った方がより正確な再現になっている可能性がある
- * (decay, sustain, release も同様)
- *
- * しかし一方でNDS ROMを使用せずに再生するMMLプレイヤーがNDSの解析データに依存した動作をするというのはちょっと嫌だなという気持ちもある
  */
 export function sbAttackToSeconds(a: number): number {
   if (a >= 127) return 0.001;
-  if (a <= 0) return 10.0;
+  if (a <= 0) a = 0;
   // Curve: 10 / (a + 0.01) matches a=4 -> 2.5s, a=19 -> 0.52s, a=39 -> 0.25s closely
-  return Math.min(10.0, Math.max(0.001, 10.0 / a));
+  return 12.5 / (a+1);
 }
 
 /**
@@ -53,11 +45,7 @@ export function sbAttackToSeconds(a: number): number {
  * TODO: I think this is inaccurate
  */
 export function sbDecayToSeconds(d: number): number {
-  if (d >= 127) return 0.001;
-  if (d <= 0) return 10.0;
-  const diff = 127 - d;
-  // diff=36 -> ~2.5s
-  return Math.min(10.0, Math.max(0.001, 2.5 * (diff / 36)));
+  return sbReleaseToSeconds(d);
 }
 
 /**
@@ -77,15 +65,32 @@ export function sbSustainToLevel(s: number): number {
  * R=127: ~0.01s
  */
 export function sbReleaseToSeconds(r: number): number {
-  if (r >= 127) return 0.01;
-  const diff = 127 - r;
-  return Math.min(10.0, Math.max(0.01, 2.5 * (diff / 36)));
+  if (r >= 127) r = 127;
+  if (r <= 0) r = 0;
+  return 0.00545 * Math.pow(127 - r, 1.71);
 }
 
 /**
  * Convert full SmileBASIC @E envelope to physical ADSR parameters
+ * 
+ * NOTE:
+ * SmileBASIC2がNintendoDSの仕様に合わせてエンベロープのパラメータの仕様を決定していた
+ * かつ SmileBASIC3は2の仕様を引き継いだ と仮定した場合、
+ * 上記の実測値を再現するよりも、
+ * NDSInstrumentBank.getAttackSeconds を使った方がより正確な再現になっている可能性がある
+ * (decay, sustain, release も同様)
+ *
+ * しかし一方でNDS ROMを使用せずに再生するMMLプレイヤーがNDSの解析データに依存した動作をするというのはちょっと嫌だなという気持ちもある
+ * 
+ * 実際に試してみたけどなんかちょっと違う?
  */
 export function convertSmileBASICEnvelope(envelope: EnvelopeParams): ADSRParams {
+  // return {
+  //   attackTime: NDSInstrumentBank.getAttackSeconds(envelope.a),
+  //     sustainLevel: NDSInstrumentBank.getSustainLevel(envelope.s),
+  //     decayTime: NDSInstrumentBank.getDecaySeconds(envelope.d, envelope.s),
+  //     releaseTime: NDSInstrumentBank.getReleaseSeconds(envelope.r, envelope.s)
+  // }
   return {
     attackTime: sbAttackToSeconds(envelope.a),
     decayTime: sbDecayToSeconds(envelope.d),
