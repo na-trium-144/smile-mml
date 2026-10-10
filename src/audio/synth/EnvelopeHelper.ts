@@ -3,7 +3,7 @@
  * Schedules ADSR curves onto WebAudio GainNode with sample-accurate automation.
  */
 
-import type { ADSRParams } from '../types.js';
+import type { ADSRParams } from "../types.js";
 
 export class EnvelopeHelper {
   /**
@@ -22,7 +22,7 @@ export class EnvelopeHelper {
     peakGain: number,
     startTime: number,
     gateDuration: number,
-    isSlur: boolean = false
+    isSlur: boolean = false,
   ): void {
     const attack = Math.max(0.001, envelope.attackTime);
     const decay = Math.max(0.001, envelope.decayTime);
@@ -42,23 +42,35 @@ export class EnvelopeHelper {
       gainParam.setValueAtTime(sustainGain, releaseStartTime);
       // Release down to silence
       gainParam.linearRampToValueAtTime(0.00001, releaseStartTime + release);
-
     } else {
       gainParam.setValueAtTime(0, startTime);
       // Attack phase
-      if(attack < gateDuration){
+      if (attack < gateDuration) {
         gainParam.linearRampToValueAtTime(peakGain, startTime + attack);
 
         // Decay phase to sustain level
-        gainParam.linearRampToValueAtTime(sustainGain, startTime + attack + decay);
+        if (attack + decay < gateDuration) {
+          gainParam.linearRampToValueAtTime(
+            sustainGain,
+            startTime + attack + decay,
+          );
 
-        // Anchor current value at release point
-        gainParam.setValueAtTime(sustainGain, releaseStartTime);
+          // Anchor current value at release point
+          gainParam.setValueAtTime(sustainGain, releaseStartTime);
+        } else {
+          gainParam.linearRampToValueAtTime(
+            peakGain *
+              (1 - ((1 - sustainLevel) * (gateDuration - attack)) / decay),
+            releaseStartTime,
+          );
+        }
         // Release down to silence
         gainParam.linearRampToValueAtTime(0.00001, releaseStartTime + release);
-
-      }else{
-        gainParam.linearRampToValueAtTime(peakGain * gateDuration / attack, releaseStartTime);
+      } else {
+        gainParam.linearRampToValueAtTime(
+          (peakGain * gateDuration) / attack,
+          releaseStartTime,
+        );
 
         // Release down to silence
         gainParam.linearRampToValueAtTime(0.00001, releaseStartTime + release);
