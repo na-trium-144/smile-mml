@@ -4,7 +4,14 @@
  * Receives MML text and InstrumentRegistry; parses MML on play if changed.
  */
 
-import { useState, useRef, useCallback, useEffect, type FC } from "react";
+import {
+  useState,
+  useRef,
+  useCallback,
+  useEffect,
+  useMemo,
+  type FC,
+} from "react";
 import type { MMLEvent } from "../parser/types.js";
 import { parseMML } from "../parser/vmmlParser.js";
 import type { InstrumentRegistry } from "../audio/banks/InstrumentRegistry.js";
@@ -12,6 +19,7 @@ import { SynthEngine } from "../audio/synth/SynthEngine.js";
 import { MMLScheduler } from "../audio/scheduler/MMLScheduler.js";
 import { preparePlaybackEvents } from "../audio/track/trackProcessor.js";
 import { useInstrumentContext } from "./InstrumentContext.js";
+import { NoteVisualizer, buildVisualizerNotes } from "./NoteVisualizer.js";
 import clsx from "clsx";
 
 interface AudioPlayerProps {
@@ -53,6 +61,21 @@ export function AudioPlayer({ mml }: AudioPlayerProps) {
 
   const synthRef = useRef<SynthEngine | null>(null);
   const schedulerRef = useRef<MMLScheduler | null>(null);
+
+  // Build visualizer data from parsed events
+  const visualizerData = useMemo(
+    () => buildVisualizerNotes(eventsRef.current),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [eventsRef.current],
+  );
+
+  // Provide a stable callback for NoteVisualizer to read current time from scheduler
+  const getVisualizerTick = useCallback(
+    () =>
+      schedulerRef.current?.getCurrentTick() ??
+      schedulerRef.current?.secondsToTick(currentTime),
+    [currentTime],
+  );
 
   // Cleanup on unmount
   useEffect(() => {
@@ -211,6 +234,16 @@ export function AudioPlayer({ mml }: AudioPlayerProps) {
             {formatTime(totalTime)}
           </span>
         </div>
+
+        {/* Note Visualizer */}
+        {visualizerData.channels.length > 0 && (
+          <NoteVisualizer
+            notes={visualizerData.notes}
+            channels={visualizerData.channels}
+            getCurrentTick={getVisualizerTick}
+            isPlaying={playbackState === "playing"}
+          />
+        )}
 
         {error && (
           <div role="alert" className="alert alert-error">

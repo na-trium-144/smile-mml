@@ -50,8 +50,12 @@ export interface BaseMMLEvent {
 export interface NoteEvent extends BaseMMLEvent {
   type: 'note';
   noteNumber: number; // 0-127 (MIDI note number, Middle C = 60)
-  noteName: string; // e.g. "C4", "F#5"
+  baseOctave: number; // (baseOctave + 1) * 12 + baseNoteIndex + totalAccidentials = noteNumber
+  baseNoteIndex: number; // 0-11
+  totalAccidentials: number;
   duration: number; // Note length in ticks (0 for portamento target without length)
+  noteValue: number; // 音価 (1, 2, 4, ..., 192)
+  totalDots: number;
   gateDuration: number; // Sounding duration in ticks
   velocity: number; // 0-127 (@V)
   volume: number; // 0-127 (V)
@@ -61,10 +65,8 @@ export interface NoteEvent extends BaseMMLEvent {
   gate: number; // 0-8 (Q)
   envelope: EnvelopeParams;
   modulation: ModulationParams;
-  isTie?: boolean;
-  isPortamento?: boolean; // true if sliding to the next note
-  portamentoTargetNote?: number; // Target MIDI note number
-  portamentoSourceNote?: number; // Source MIDI note number
+  isTie: boolean;
+  isPortamento: boolean; // true if sliding to the next note
 }
 
 export interface RestEvent extends BaseMMLEvent {

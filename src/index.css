@@ -45,33 +45,42 @@ accent, info, success, and warning follows SmileBASIC3 color pallet: https://pet
 @theme {
   --font-sans: "M+ 1p", "M+ 1c", "M PLUS 1p", sans-serif;
   --color-base-border: #ffffffc0;
+  /* sb3のエディタ色設定で使えるのはRGB7段階なので、 00, 2b, 55, 80, aa, d4, ff とする。 */
+  --color-sb3-text: #ffffff; /* 7 7 7 */
+  --color-sb3-numeric: #ff80d4; /* 7 4 6 */
+  --color-sb3-string: #aaaaaa; /* 5 5 5 */
+  --color-sb3-statement: #8080ff; /* 4 4 7 */
+  --color-sb3-keyword: #80d4ff; /* 4 6 7 */
+  --color-sb3-comment: #2bd455; /* 2 6 3 */
+  --color-sb3-label: #ffaa00; /* 7 5 1 */
+  --color-sb3-back: #000000; /* 1 1 1 */
 }
 
 /* SmileBASIC の各要素に対応するスタイル */
 /* sb3のエディタ色設定で使えるのはRGB7段階なので、 00, 2b, 55, 80, aa, d4, ff とする。 */
 .ace_sb3_text {
-  color: #ffffff; /* 7 7 7 */
+  @apply text-sb3-text;
 }
 .ace_sb3_numeric {
-  color: #ff80d4; /* 7 4 6 */
+  @apply text-sb3-numeric;
 }
 .ace_sb3_string {
-  color: #aaaaaa; /* 5 5 5 */
+  @apply text-sb3-string;
 }
 .ace_sb3_statement {
-  color: #8080ff; /* 4 4 7 */
+  @apply text-sb3-statement;
 }
 .ace_sb3_keyword {
-  color: #80d4ff; /* 4 6 7 */
+  @apply text-sb3-keyword;
 }
 .ace_sb3_comment {
-  color: #2bd455; /* 2 6 3 */
+  @apply text-sb3-comment;
 }
 .ace_sb3_label {
-  color: #ffaa00; /* 7 5 1 */
+  @apply text-sb3-label;
 }
 .ace_sb3_back {
-  color: #000000; /* 1 1 1 */
+  @apply text-sb3-back;
 }
 .ace_sb3_unknown {
   color: #ff2b2b;

@@ -194,6 +194,9 @@ export class MMLScheduler {
   public getCurrentTick(): number {
     return this.tempoMap.secondsToTick(this.getCurrentSeconds());
   }
+  public secondsToTick(seconds: number){
+    return this.tempoMap.secondsToTick(seconds);
+  }
 
   private startSchedulerLoop(): void {
     const tickLoop = () => {

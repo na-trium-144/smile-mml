@@ -14,11 +14,13 @@ import type {
   ParseOptions,
 } from './types.js';
 
-const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'] as const;
+export const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'] as const;
 
 export interface ChordNoteItem {
   noteNumber: number;
-  noteName: string;
+  baseOctave: number;
+  baseNoteIndex: number;
+  totalAccidentials: number;
 }
 
 export class MMLChannelParser {
@@ -516,8 +518,8 @@ export class MMLChannelParser {
         this.pos++;
       }
 
-      let vn = 0;
-      let vd = 0;
+      let totalAccidentials = 0; // VN in VMML-LIB
+      let totalDots = 0; // VD in VMML-LIB
       let trailingPortamento = false; // PT in VMML-LIB
 
       // Restore C2&4 omitted note name matching VMML-LIB line 892-900
@@ -537,12 +539,14 @@ export class MMLChannelParser {
           break;
         }
       }
+      const baseNoteIndex = n % 12;
+      const baseOctave = this.params.octave;
 
       // Count . # + - (1st pass)
       if ((c >= 'A' && c <= 'G') || c === 'R' || c === 'L' || c === '|') {
         const { dots, accidentals } = this.ldn2();
-        vd += dots;
-        vn += accidentals;
+        totalDots += dots;
+        totalAccidentials += accidentals;
       }
 
       // Get number (for O command allow negative number)
@@ -572,8 +576,8 @@ export class MMLChannelParser {
       // Count . # + - (2nd pass)
       if ((c >= 'A' && c <= 'G') || c === 'R' || c === 'L' || c === '|') {
         const { dots, accidentals } = this.ldn2();
-        vd += dots;
-        vn += accidentals;
+        totalDots += dots;
+        totalAccidentials += accidentals;
       }
 
       // Portamento length restoration C4_C
@@ -594,12 +598,12 @@ export class MMLChannelParser {
       // Restore length from L command if omitted (not when trailingPortamento=true)
       if (c !== '@' && !trailingPortamento && vStr === '') {
         v = this.params.length;
-        vd += this.params.dots;
+        totalDots += this.params.dots;
         vStr = String(v);
       }
       if (c === 'N' && !trailingPortamento && v2Str === '') {
         v2 = this.params.length;
-        vd += this.params.dots;
+        totalDots += this.params.dots;
         v2Str = String(v2);
       }
 
@@ -630,7 +634,7 @@ export class MMLChannelParser {
 
       // Calculate note number with accidentals and key shift
       if (c >= 'A' && c <= 'G') {
-        n += vn + this.params.keyShift;
+        n += totalAccidentials + this.params.keyShift;
       }
 
       // Tie check: if followed by &, remember note name for next note
@@ -644,7 +648,7 @@ export class MMLChannelParser {
         let noteDuration = 0;
         if (!trailingPortamento) {
           noteDuration = Math.round(this.spd / v);
-          let remVd = vd;
+          let remVd = totalDots;
           let tempV = v;
           while (remVd > 0) {
             tempV *= 2;
@@ -664,9 +668,13 @@ export class MMLChannelParser {
             channel: this.channelIndex,
             tick: startTick,
             noteNumber: chordNote.noteNumber,
-            noteName: chordNote.noteName,
+            baseOctave: chordNote.baseOctave,
+            baseNoteIndex: chordNote.baseNoteIndex,
+            totalAccidentials: chordNote.totalAccidentials,
             duration: noteDuration,
             gateDuration: gateDur,
+            noteValue: v,
+            totalDots,
             velocity: this.params.velocity,
             volume: this.params.volume,
             pan: this.params.pan,
@@ -689,11 +697,11 @@ export class MMLChannelParser {
       } else if (this.inChord) {
         // Collect note into chordNotes
         if (c >= 'A' && c <= 'G') {
-          const octaveStr = Math.floor(n / 12) - 1;
-          const noteNameOnly = NOTE_NAMES[((n % 12) + 12) % 12];
           this.chordNotes.push({
             noteNumber: Math.max(0, Math.min(127, n)),
-            noteName: `${noteNameOnly}${octaveStr}`,
+            baseOctave,
+            baseNoteIndex,
+            totalAccidentials,
           });
         }
         continue;
@@ -704,7 +712,7 @@ export class MMLChannelParser {
         let noteDuration = 0;
         if (!trailingPortamento) {
           noteDuration = Math.round(this.spd / v);
-          let remVd = vd;
+          let remVd = totalDots;
           let tempV = v;
           while (remVd > 0) {
             tempV *= 2;
@@ -719,17 +727,19 @@ export class MMLChannelParser {
         const { envelope, modulation } = this.cloneParams();
 
         const clampedNote = Math.max(0, Math.min(127, n));
-        const octaveStr = Math.floor(clampedNote / 12) - 1;
-        const noteNameOnly = NOTE_NAMES[((clampedNote % 12) + 12) % 12];
 
         yield {
           type: 'note',
           channel: this.channelIndex,
           tick: startTick,
           noteNumber: clampedNote,
-          noteName: `${noteNameOnly}${octaveStr}`,
+          baseOctave,
+          baseNoteIndex,
+          totalAccidentials,
           duration: noteDuration,
           gateDuration: gateDur,
+          noteValue: v,
+          totalDots,
           velocity: this.params.velocity,
           volume: this.params.volume,
           pan: this.params.pan,
@@ -751,7 +761,7 @@ export class MMLChannelParser {
       // Rest (R)
       if (c === 'R') {
         let restDuration = Math.round(this.spd / v);
-        let remVd = vd;
+        let remVd = totalDots;
         let tempV = v;
         while (remVd > 0) {
           tempV *= 2;
@@ -774,7 +784,7 @@ export class MMLChannelParser {
       if (c === 'N') {
         // trailingPortamento is not considered here in original VMML-LIB
         let noteDuration = Math.round(this.spd / v2);
-        let remVd = vd;
+        let remVd = totalDots;
         let tempV = v2;
         while (remVd > 0) {
           tempV *= 2;
@@ -788,17 +798,19 @@ export class MMLChannelParser {
         const { envelope, modulation } = this.cloneParams();
 
         const noteNum = Math.max(0, Math.min(127, v + this.params.keyShift));
-        const octaveStr = Math.floor(noteNum / 12) - 1;
-        const noteNameOnly = NOTE_NAMES[((noteNum % 12) + 12) % 12];
 
         yield {
           type: 'note',
           channel: this.channelIndex,
           tick: startTick,
           noteNumber: noteNum,
-          noteName: `${noteNameOnly}${octaveStr}`,
+          baseOctave,
+          baseNoteIndex,
+          totalAccidentials,
           duration: noteDuration,
           gateDuration: gateDur,
+          noteValue: v,
+          totalDots,
           velocity: this.params.velocity,
           volume: this.params.volume,
           pan: this.params.pan,
@@ -828,7 +840,7 @@ export class MMLChannelParser {
       // Length L<len>
       if (c === 'L') {
         this.params.length = v;
-        this.params.dots = vd;
+        this.params.dots = totalDots;
         continue;
       }
 
