@@ -2,9 +2,12 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.tsx'
+import { InstrumentProvider } from './components/InstrumentContext.tsx'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <App />
+    <InstrumentProvider>
+      <App />
+    </InstrumentProvider>
   </StrictMode>,
 )

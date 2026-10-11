@@ -4,9 +4,9 @@
  * with lookahead buffer intervals.
  */
 
-import type { SynthEngine } from '../synth/SynthEngine.js';
-import type { PreparedEvent, PreparedNote } from '../types.js';
-import { TempoMap } from './TempoMap.js';
+import type { SynthEngine } from "../synth/SynthEngine.js";
+import type { PreparedEvent, PreparedNote } from "../types.js";
+import { TempoMap } from "./TempoMap.js";
 
 export class MMLScheduler {
   private synth: SynthEngine;
@@ -28,16 +28,31 @@ export class MMLScheduler {
   private progressTimerId: number | null = null;
 
   // Listeners
-  public onProgress?: (currentSeconds: number, totalSeconds: number, currentTick: number) => void;
+  public onProgress?: (
+    currentSeconds: number,
+    totalSeconds: number,
+    currentTick: number,
+  ) => void;
   public onEnded?: () => void;
 
-  constructor(synth: SynthEngine, events: PreparedEvent[], ticksPerWholeNote: number = 192) {
+  onError: (e: unknown) => void;
+
+  constructor(
+    synth: SynthEngine,
+    events: PreparedEvent[],
+    ticksPerWholeNote: number = 192,
+    onError: (e: unknown) => void,
+  ) {
     this.synth = synth;
     this.events = events;
+    this.onError = onError;
 
     // Extract tempo events to construct TempoMap
     const tempoEvents = events
-      .filter((e): e is { type: 'tempo'; tick: number; bpm: number } => e.type === 'tempo')
+      .filter(
+        (e): e is { type: "tempo"; tick: number; bpm: number } =>
+          e.type === "tempo",
+      )
       .map((e) => ({ tick: e.tick, bpm: e.bpm }));
 
     this.tempoMap = new TempoMap(tempoEvents, ticksPerWholeNote);
@@ -45,7 +60,7 @@ export class MMLScheduler {
     // Calculate maximum tick and total duration
     this.maxTick = 0;
     for (const ev of events) {
-      if (ev.type === 'note') {
+      if (ev.type === "note") {
         const noteEnd = ev.event.tick + ev.event.duration;
         if (noteEnd > this.maxTick) this.maxTick = noteEnd;
       } else {
@@ -78,13 +93,15 @@ export class MMLScheduler {
       this.playbackOffsetSeconds = 0;
     }
 
-    this.playbackStartAudioTime = this.synth.currentTime - this.playbackOffsetSeconds;
+    this.playbackStartAudioTime =
+      this.synth.currentTime - this.playbackOffsetSeconds;
 
     // Move nextEventIndex to the event matching playbackOffsetSeconds
     this.nextEventIndex = 0;
     while (
       this.nextEventIndex < this.events.length &&
-      this.getEventTime(this.events[this.nextEventIndex]) < this.playbackOffsetSeconds
+      this.getEventTime(this.events[this.nextEventIndex]) <
+        this.playbackOffsetSeconds
     ) {
       this.nextEventIndex++;
     }
@@ -104,7 +121,8 @@ export class MMLScheduler {
     this.stopProgressLoop();
 
     // Record elapsed time
-    this.playbackOffsetSeconds = this.synth.currentTime - this.playbackStartAudioTime;
+    this.playbackOffsetSeconds =
+      this.synth.currentTime - this.playbackStartAudioTime;
     this.synth.stopAll();
 
     this.notifyProgress();
@@ -134,14 +152,18 @@ export class MMLScheduler {
       this.pause();
     }
 
-    this.playbackOffsetSeconds = Math.max(0, Math.min(this.totalDurationSeconds, seconds));
+    this.playbackOffsetSeconds = Math.max(
+      0,
+      Math.min(this.totalDurationSeconds, seconds),
+    );
     this.synth.stopAll();
 
     // Re-index event pointer
     this.nextEventIndex = 0;
     while (
       this.nextEventIndex < this.events.length &&
-      this.getEventTime(this.events[this.nextEventIndex]) < this.playbackOffsetSeconds
+      this.getEventTime(this.events[this.nextEventIndex]) <
+        this.playbackOffsetSeconds
     ) {
       this.nextEventIndex++;
     }
@@ -160,7 +182,7 @@ export class MMLScheduler {
     if (this.isPlaying) {
       return Math.min(
         this.totalDurationSeconds,
-        this.synth.currentTime - this.playbackStartAudioTime
+        this.synth.currentTime - this.playbackStartAudioTime,
       );
     }
     return this.playbackOffsetSeconds;
@@ -178,9 +200,10 @@ export class MMLScheduler {
       if (!this.isPlaying) return;
 
       const currentAudioTime = this.synth.currentTime;
-      const currentPlaybackSeconds = currentAudioTime - this.playbackStartAudioTime;
-      const scheduleUntilSeconds = currentPlaybackSeconds + this.lookaheadSeconds;
-
+      const currentPlaybackSeconds =
+        currentAudioTime - this.playbackStartAudioTime;
+      const scheduleUntilSeconds =
+        currentPlaybackSeconds + this.lookaheadSeconds;
       // Schedule all events up to lookahead window
       while (this.nextEventIndex < this.events.length) {
         const ev = this.events[this.nextEventIndex];
@@ -193,8 +216,12 @@ export class MMLScheduler {
         // Only schedule if it's within or slightly ahead of current time
         const targetAudioTime = this.playbackStartAudioTime + eventSec;
 
-        if (ev.type === 'note') {
-          this.scheduleNote(ev.event, targetAudioTime);
+        if (ev.type === "note") {
+          try {
+            this.scheduleNote(ev.event, targetAudioTime);
+          } catch (e) {
+            this.onError(e);
+          }
         }
 
         this.nextEventIndex++;
@@ -209,22 +236,35 @@ export class MMLScheduler {
         this.onEnded?.();
         return;
       }
-
-      this.scheduleTimerId = window.setTimeout(tickLoop, this.scheduleIntervalMs);
+      this.scheduleTimerId = window.setTimeout(
+        tickLoop,
+        this.scheduleIntervalMs,
+      );
     };
 
-    tickLoop();
+    window.setTimeout(tickLoop, 0);
   }
 
   private scheduleNote(note: PreparedNote, audioTime: number): void {
-    const durationSec = this.tempoMap.durationTicksToSeconds(note.tick, note.duration);
-    const gateDurationSec = this.tempoMap.durationTicksToSeconds(note.tick, note.gateDuration);
+    const durationSec = this.tempoMap.durationTicksToSeconds(
+      note.tick,
+      note.duration,
+    );
+    const gateDurationSec = this.tempoMap.durationTicksToSeconds(
+      note.tick,
+      note.gateDuration,
+    );
 
-    this.synth.playNote(note, Math.max(this.synth.currentTime, audioTime), durationSec, gateDurationSec);
+    this.synth.playNote(
+      note,
+      Math.max(this.synth.currentTime, audioTime),
+      durationSec,
+      gateDurationSec,
+    );
   }
 
   private getEventTime(ev: PreparedEvent): number {
-    const tick = ev.type === 'note' ? ev.event.tick : ev.tick;
+    const tick = ev.type === "note" ? ev.event.tick : ev.tick;
     return this.tempoMap.tickToSeconds(tick);
   }
 

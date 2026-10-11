@@ -1,9 +1,11 @@
 import type { ReactNode } from "react";
+import { useInstrumentContext } from "../components/InstrumentContext.js";
 
 interface Props {
   children: ReactNode;
   loadFile: (file: File) => void;
 }
+
 export function WithHeaderAndSidebar(props: Props) {
   return (
     <>
@@ -31,7 +33,7 @@ export function WithHeaderAndSidebar(props: Props) {
 
       <div className="drawer lg:drawer-open">
         <input type="checkbox" id="SidebarToggle" className="drawer-toggle" />
-        <div className="drawer-content flex flex-col items-center justify-center p-8">
+        <div className="drawer-content flex flex-col items-center p-8">
           {/* Page content here */}
           {props.children}
         </div>
@@ -41,18 +43,129 @@ export function WithHeaderAndSidebar(props: Props) {
             aria-label="close sidebar"
             className="drawer-overlay"
           />
-          <ul className="menu bg-base-200 min-h-full w-80 p-4">
-            {/* Sidebar content here */}
-            <input
-              type="file"
-              onChange={(e) => {
-                if (e.target.files && e.target.files.length > 0) {
-                  loadFile(e.target.files[0]);
-                }
-              }}
-            />
-          </ul>
+          <div className="bg-base-200 min-h-full w-80 p-4 space-y-4">
+            <SidebarContent {...props} />
+          </div>
         </div>
+      </div>
+    </>
+  );
+}
+
+function SidebarContent(props: Props) {
+  const {
+    sf2Name,
+    ndsName,
+    ndsSdats,
+    selectedNdsSdat,
+    loadingAsset,
+    loadError,
+    loadSF2,
+    loadNDS,
+    selectSdat,
+  } = useInstrumentContext();
+  return (
+    <>
+      {/* ── MML File ── */}
+      <div>
+        <h3 className="font-bold mb-2">📄 MMLファイル</h3>
+        <input
+          type="file"
+          className="file-input file-input-bordered file-input-sm w-full"
+          accept=".mml,.txt"
+          onChange={(e) => {
+            if (e.target.files?.[0]) {
+              props.loadFile(e.target.files[0]);
+            }
+          }}
+        />
+      </div>
+
+      <div className="divider my-1" />
+
+      {/* ── Sound Sources ── */}
+      <div className="space-y-3">
+        <h3 className="font-bold">🎵 音源設定</h3>
+
+        {/* SF2 */}
+        <div>
+          <label className="label">
+            <span className="label-text text-sm">🎹 SoundFont (.sf2)</span>
+          </label>
+          <input
+            type="file"
+            className="file-input file-input-bordered file-input-sm w-full"
+            accept=".sf2,.SF2"
+            disabled={loadingAsset !== null}
+            onChange={(e) => {
+              if (e.target.files?.[0]) {
+                loadSF2(e.target.files[0]);
+              }
+            }}
+          />
+          {sf2Name && (
+            <div className="badge badge-success badge-sm mt-1">✓ {sf2Name}</div>
+          )}
+        </div>
+
+        {/* NDS */}
+        <div>
+          <label className="label">
+            <span className="label-text text-sm">
+              🎮 NDS ROM (.nds / .sdat)
+            </span>
+          </label>
+          <input
+            type="file"
+            className="file-input file-input-bordered file-input-sm w-full"
+            accept=".nds,.NDS,.sdat,.SDAT"
+            disabled={loadingAsset !== null}
+            onChange={(e) => {
+              if (e.target.files?.[0]) {
+                loadNDS(e.target.files[0]);
+              }
+            }}
+          />
+          {ndsName && (
+            <div className="badge badge-success badge-sm mt-1">✓ {ndsName}</div>
+          )}
+          {ndsSdats.length > 1 && (
+            <select
+              className="select select-bordered select-sm w-full mt-1"
+              value={selectedNdsSdat}
+              onChange={(e) => selectSdat(e.target.value)}
+            >
+              {ndsSdats.map((path) => (
+                <option key={path} value={path}>
+                  {path}
+                </option>
+              ))}
+            </select>
+          )}
+        </div>
+
+        {/* PSG Info */}
+        <p className="text-xs opacity-70">
+          💡 PSG音源 (@144〜@151) は常に利用可能です。
+          {!sf2Name &&
+            !ndsName &&
+            " SF2/ROM が未読み込みの場合、矩形波でフォールバック再生します。"}
+        </p>
+
+        {/* Loading State */}
+        {loadingAsset && (
+          <div className="flex items-center gap-2 text-sm">
+            <span className="loading loading-spinner loading-sm" />
+            {loadingAsset} を読み込み中...
+          </div>
+        )}
+
+        {/* Error */}
+        {loadError && (
+          <div role="alert" className="alert alert-error alert-sm text-xs">
+            <span>{loadError}</span>
+          </div>
+        )}
       </div>
     </>
   );

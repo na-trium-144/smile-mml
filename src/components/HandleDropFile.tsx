@@ -1,32 +1,52 @@
-import { useState, type ReactNode, useRef } from "react";
+import { useState, type ReactNode } from "react";
+import { useInstrumentContext } from "../components/InstrumentContext.js";
 
 interface Props {
   className: string;
   children: ReactNode;
   loadFile: (file: File) => void;
 }
+
+const SF2_EXTENSIONS = [".sf2"];
+const NDS_EXTENSIONS = [".nds", ".sdat"];
+
+function getExtension(name: string): string {
+  const dot = name.lastIndexOf(".");
+  return dot >= 0 ? name.slice(dot).toLowerCase() : "";
+}
+
 export function HandleDropFile(props: Props) {
   const [dragging, setDragging] = useState(false);
+  const { loadSF2, loadNDS } = useInstrumentContext();
+
+  const handleFile = (file: File) => {
+    const ext = getExtension(file.name);
+    if (SF2_EXTENSIONS.includes(ext)) {
+      loadSF2(file);
+    } else if (NDS_EXTENSIONS.includes(ext)) {
+      loadNDS(file);
+    } else {
+      props.loadFile(file);
+    }
+  };
+
   return (
     <>
       <div
         className={props.className}
         onDragOver={(e) => {
-          console.log("onDragOver");
           e.preventDefault();
           setDragging(true);
         }}
         onDragLeave={(e) => {
-          console.log("onDragLeav");
           e.preventDefault();
           setDragging(false);
         }}
         onDrop={(e) => {
-          console.log("onDrop");
           e.preventDefault();
           setDragging(false);
           if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-            props.loadFile(e.dataTransfer.files[0]);
+            handleFile(e.dataTransfer.files[0]);
           }
         }}
       >
@@ -40,7 +60,7 @@ export function HandleDropFile(props: Props) {
       />
       <div className="modal pointer-events-none" role="dialog">
         <div className="modal-box">
-          MMLファイルをドラッグ&ドロップで読み込む
+          ファイルをドラッグ&ドロップで読み込む
         </div>
       </div>
     </>
