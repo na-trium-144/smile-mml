@@ -1,6 +1,9 @@
 import AceEditor from "react-ace";
 import "ace-builds/src-noconflict/theme-twilight";
 import "ace-builds/src-noconflict/ext-searchbox";
+import "./MmlHighlightRules.js";
+import { useEffect, useRef } from "react";
+import type Ace from "ace-builds";
 
 interface MMLEditorProps {
   mml: string;
@@ -8,6 +11,13 @@ interface MMLEditorProps {
 }
 
 export const MMLEditor = ({ mml, onChange }: MMLEditorProps) => {
+  const editorRef = useRef<Ace.Editor | null>(null);
+
+  useEffect(() => {
+    (window as any).mmlHightlightRules_UpdateReferencedMacros(mml);
+    editorRef.current?.session.bgTokenizer.start(0);
+  }, [mml]);
+
   return (
     <div className="card card-border w-full h-screen">
       <div className="card-body">
@@ -21,6 +31,9 @@ export const MMLEditor = ({ mml, onChange }: MMLEditorProps) => {
           <AceEditor
             name="MMLEditor"
             value={mml}
+            onLoad={(editor) => {
+              editorRef.current = editor;
+            }}
             onChange={(v) => onChange(v)}
             width="full"
             height="100%"
@@ -30,6 +43,7 @@ export const MMLEditor = ({ mml, onChange }: MMLEditorProps) => {
             tabSize={1}
             showPrintMargin={false}
             setOptions={{ useWorker: false }}
+            mode="mml"
           />
         </div>
       </div>
