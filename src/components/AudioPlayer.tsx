@@ -22,10 +22,71 @@ interface AudioPlayerProps {
 
 type PlaybackState = "stopped" | "playing" | "paused";
 
+function performConversion(
+  mmlText: string,
+  fileNameStr: string,
+  shift: number,
+  mapDrumsFlag: boolean
+) {
+  const t0 = performance.now();
+  const collectedEvents: MMLEvent[] = [];
+  const gen = parseMML(mmlText, {
+    stopOnInfiniteLoop: true,
+    keyShift: shift,
+  });
+
+  for (const ev of gen) {
+    collectedEvents.push(ev);
+  }
+
+  const midiData = convertMmlToMidi(mmlText, {
+    songTitle: fileNameStr.replace(/\.[^/.]+$/, ''),
+    stopOnInfiniteLoop: true,
+    keyShift: shift,
+    mapDrumsToChannel9: mapDrumsFlag,
+  });
+
+  const t1 = performance.now();
+  return {
+    events: collectedEvents,
+    midiBytes: midiData,
+    conversionTime: t1 - t0,
+  };
+}
+
+
 export const AudioPlayer: FC<AudioPlayerProps> = ({
   events,
   ticksPerWholeNote = 192,
 }) => {
+  const [keyShift, setKeyShift] = useState<number>(0);
+  const [mapDrums, setMapDrums] = useState<boolean>(true);
+  const [events, setEvents] = useState<MMLEvent[]>([]);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleConvert = () => {
+    if (!mml.trim()) {
+      setError('MMLコードを入力してください');
+      return;
+    }
+
+    setIsConverting(true);
+    setError(null);
+
+    try {
+      const result = performConversion(mml, fileName, keyShift, mapDrums);
+      setConversionTime(result.conversionTime);
+      setEvents(result.events);
+      setMidiBytes(result.midiBytes);
+    } catch (err: unknown) {
+      console.error(err);
+      setError(`変換エラー: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setIsConverting(false);
+    }
+  };
+
+
   const [playbackState, setPlaybackState] = useState<PlaybackState>("stopped");
   const [currentTime, setCurrentTime] = useState(0);
   const [totalTime, setTotalTime] = useState(0);
@@ -214,6 +275,44 @@ export const AudioPlayer: FC<AudioPlayerProps> = ({
 
   return (
     <div className="audio-player">
+<div className="controls-panel">
+            <div className="options-row">
+              <div className="option-item">
+                <label htmlFor="keyShift">キー移調 (半音):</label>
+                <input
+                  id="keyShift"
+                  type="number"
+                  value={keyShift}
+                  onChange={(e) => setKeyShift(parseInt(e.target.value, 10) || 0)}
+                  min={-36}
+                  max={36}
+                />
+              </div>
+
+              <div className="option-item checkbox-item">
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={mapDrums}
+                    onChange={(e) => setMapDrums(e.target.checked)}
+                  />
+                  ドラム音色 (@128等) を MIDI Ch10 に自動マッピング
+                </label>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              className="convert-btn"
+              onClick={handleConvert}
+              disabled={isConverting}
+            >
+              {isConverting ? '⏳ 変換中...' : '▶ MMLをパース & MIDIに変換'}
+            </button>
+          </div>
+
+{error && <div className="error-banner">{error}</div>}
+
       <h3>🔊 オーディオ再生</h3>
 
       {/* Sound Source Files */}
