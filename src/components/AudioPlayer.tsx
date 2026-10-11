@@ -144,6 +144,7 @@ export function AudioPlayer({ mml }: AudioPlayerProps) {
   const handleStop = useCallback(() => {
     schedulerRef.current?.pause();
     setPlaybackState("paused");
+    schedulerRef.current?.seek(0);
     setCurrentTime(0);
   }, []);
 
