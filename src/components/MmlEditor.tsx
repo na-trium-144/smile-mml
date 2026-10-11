@@ -38,7 +38,7 @@ export const MMLEditor = ({ mml, onChange }: MMLEditorProps) => {
             width="full"
             height="100%"
             theme="twilight"
-            fontSize={14}
+            fontSize={16}
             wrapEnabled
             tabSize={1}
             showPrintMargin={false}

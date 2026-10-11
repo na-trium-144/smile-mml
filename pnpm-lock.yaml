@@ -8,6 +8,9 @@ importers:
 
   .:
     dependencies:
+      '@fontsource/league-mono':
+        specifier: ^5.3.0
+        version: 5.3.0
       '@fontsource/m-plus-1p':
         specifier: ^5.3.0
         version: 5.3.0
@@ -224,6 +227,9 @@ packages:
     engines: {node: '>=18'}
     cpu: [x64]
     os: [win32]
+
+  '@fontsource/league-mono@5.3.0':
+    resolution: {integrity: sha512-DUFXFpXEiCl8S5pDTPTzjXCu0ngZKSfOS+BWsIUjqCd5W0ZBqD1/5kDu3iQDXGiBQ9IM7FvVBxNBmy8pUHk1zw==}
 
   '@fontsource/m-plus-1p@5.3.0':
     resolution: {integrity: sha512-CunM07SjKhNp0nhIlp8x4QqeBqQx9bsR7Xrmm7A9riVt5TxFuKmFwDPT6Co9nnirguvsD9Ng+4pHM2uE7WbXmQ==}
@@ -1019,6 +1025,8 @@ snapshots:
 
   '@esbuild/win32-x64@0.28.2':
     optional: true
+
+  '@fontsource/league-mono@5.3.0': {}
 
   '@fontsource/m-plus-1p@5.3.0': {}
 

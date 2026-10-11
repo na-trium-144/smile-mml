@@ -83,6 +83,9 @@ accent, info, success, and warning follows SmileBASIC3 color pallet: https://pet
   /* twilightのブラケットが見づらい */
   @apply border-primary!;
 }
+.ace_editor {
+  font-family: "League Mono", "M+ 1p", "M+ 1c", "M PLUS 1p", monospace !important;
+}
 
 :root {
   --root-bg: var(--color-base-300);
