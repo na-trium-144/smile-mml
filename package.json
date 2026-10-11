@@ -11,10 +11,13 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@fontsource/m-plus-1p": "^5.3.0",
     "@marmooo/soundfont": "^0.3.4",
+    "ace-builds": "^1.44.0",
     "clsx": "^2.1.1",
     "nitro-fs": "^1.1.1",
     "react": "^19.2.8",
+    "react-ace": "^15.0.0",
     "react-dom": "^19.2.8"
   },
   "devDependencies": {

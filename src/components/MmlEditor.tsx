@@ -1,4 +1,6 @@
-import { useRef, useState, type DragEvent, type ChangeEvent } from "react";
+import AceEditor from "react-ace";
+import "ace-builds/src-noconflict/theme-twilight";
+import "ace-builds/src-noconflict/ext-searchbox";
 
 interface MMLEditorProps {
   mml: string;
@@ -7,18 +9,29 @@ interface MMLEditorProps {
 
 export const MMLEditor = ({ mml, onChange }: MMLEditorProps) => {
   return (
-    <div className="card card-border w-full">
+    <div className="card card-border w-full h-screen">
       <div className="card-body">
-        <h2 className="card-title">MMLを編集</h2>
-        <p className="text-right">{mml.length} 文字</p>
+        <div className="card-title flex flex-wrap items-baseline justify-between">
+          <h2>MMLを編集</h2>
+          <span className="text-sm text-right">{mml.length} 文字</span>
+        </div>
 
-        <textarea
-          value={mml}
-          onChange={(e) => onChange(e.target.value)}
-          placeholder="MMLコードをここに入力または貼り付け..."
-          rows={14}
-          spellCheck={false}
-        />
+        <div className="flex-1 textarea textarea-ghost w-[unset] touch-auto p-0">
+          {/* <textarea> じゃないけどdaisyuiのtextareaクラスのborderなどのスタイルを適用 */}
+          <AceEditor
+            name="MMLEditor"
+            value={mml}
+            onChange={(v) => onChange(v)}
+            width="full"
+            height="100%"
+            theme="twilight"
+            fontSize={14}
+            wrapEnabled
+            tabSize={1}
+            showPrintMargin={false}
+            setOptions={{ useWorker: false }}
+          />
+        </div>
       </div>
     </div>
   );

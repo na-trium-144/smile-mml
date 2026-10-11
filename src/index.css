@@ -43,6 +43,7 @@ accent, info, success, and warning follows SmileBASIC3 color pallet: https://pet
 }
 
 @theme {
+  --font-sans: "M+ 1p", "M+ 1c", "M PLUS 1p", sans-serif;
   --color-base-border: #ffffffc0;
   /* sb3のエディタ色設定で使えるのはRGB7段階なので、 00, 2b, 55, 80, aa, d4, ff とする。 */
   --color-syntax-text: #ffffff; /* 7 7 7 */
