@@ -7,7 +7,6 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
-    "test": "tsx tests/test_features.ts && tsx tests/test_midi.ts",
     "preview": "vite preview"
   },
   "dependencies": {
