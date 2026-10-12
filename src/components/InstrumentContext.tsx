@@ -225,7 +225,7 @@ export function InstrumentSelect() {
                 }}
               />
               {sf2Name && (
-                <div className="badge badge-success badge-sm mt-1">
+                <div className="badge badge-success badge-sm">
                   ✓ {sf2Name}
                 </div>
               )}
@@ -259,13 +259,13 @@ export function InstrumentSelect() {
                 }}
               />
               {ndsName && (
-                <div className="badge badge-success badge-sm mt-1">
+                <div className="badge badge-success badge-sm">
                   ✓ {ndsName}
                 </div>
               )}
-              {ndsSdats.length > 1 && (
+              {ndsSdats.length >= 1 && (
                 <select
-                  className="select select-bordered select-sm w-full mt-1"
+                  className="select select-sm w-max"
                   value={selectedNdsSdat}
                   onChange={(e) => selectSdat(e.target.value)}
                 >
