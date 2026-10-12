@@ -459,7 +459,7 @@ export const NoteVisualizer: FC<NoteVisualizerProps> = ({
       </div>
       <div className="relative hidden md:flex flex-col text-sm text-center whitespace-nowrap w-10">
         {channels.map((_, ci) =>
-          currentPrograms[ci] ? (
+          currentPrograms[ci] !== undefined ? (
             <span key={ci} className="flex-1 basis-0 text-sb3-label">
               @{currentPrograms[ci]}
             </span>
