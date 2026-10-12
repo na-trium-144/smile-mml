@@ -28,7 +28,10 @@ export function WithHeaderAndSidebar(props: Props) {
             ファイル
           </label>
         </div>
-        <h1 className="navbar-center text-2xl font-semibold">SmileMML</h1>
+        <h1 className="navbar-center text-2xl font-semibold">
+          <img src="/favicon-white.svg" className="h-10 mr-2" />
+          SmileMML
+        </h1>
         <div className="navbar-end"></div>
       </header>
 
