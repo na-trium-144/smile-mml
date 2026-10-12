@@ -17,7 +17,6 @@ import {
   useState,
 } from "react";
 import type { NoteEvent, MMLEvent } from "../parser/types.js";
-import { TempoMap } from "../audio/scheduler/TempoMap.js";
 import { NOTE_NAMES } from "../parser/vmmlParser.js";
 
 interface ChannelParams {

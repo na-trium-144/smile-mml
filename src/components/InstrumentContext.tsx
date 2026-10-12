@@ -12,7 +12,6 @@ import {
   useCallback,
   type ReactNode,
   type FC,
-  type CSSProperties,
 } from "react";
 import { InstrumentRegistry } from "../audio/banks/InstrumentRegistry.js";
 import { SF2InstrumentBank } from "../audio/banks/SF2InstrumentBank.js";

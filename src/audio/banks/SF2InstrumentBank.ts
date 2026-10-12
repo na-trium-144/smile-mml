@@ -8,7 +8,7 @@
 // https://github.com/marmooo/midy/blob/a20d82520626b40dbaab8fb82c94747535ea9410/src/midy-GM2.ts#L267
 // を参考にしました
 
-import { GeneratorStore, parse, SoundFont } from '@marmooo/soundfont';
+import { parse, SoundFont } from '@marmooo/soundfont';
 import type { InstrumentBank } from './InstrumentBank.js';
 import type { VoiceData, ADSRParams } from '../types.js';
 import { timecentToSeconds, centibelsToGain } from '../utils/conversion.js';

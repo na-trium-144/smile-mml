@@ -5,16 +5,16 @@
  */
 
 import type { InstrumentBank } from './InstrumentBank.js';
-import type { VoiceData, PeriodicVoiceData } from '../types.js';
+import type { VoiceData } from '../types.js';
 import { PSGInstrumentBank } from './PSGInstrumentBank.js';
-import { generateSquareWaveHarmonics } from '../utils/waveformGenerator.js';
+// import { generateSquareWaveHarmonics } from '../utils/waveformGenerator.js';
 
 export class InstrumentRegistry {
   private banks: InstrumentBank[] = [];
   private psgBank: PSGInstrumentBank;
 
   // Fallback harmonic for default synth when SF2/ROM is not yet loaded
-  private fallbackHarmonics = generateSquareWaveHarmonics(0.5, 32);
+  // private fallbackHarmonics = generateSquareWaveHarmonics(0.5, 32);
 
   constructor() {
     // PSG bank is always available as core hardware emulator
@@ -86,7 +86,7 @@ export class InstrumentRegistry {
 
     // 3. Graceful fallback when no SF2/ROM is loaded for @0-@127/128/129:
     // Generate a gentle musical periodic wave so playback still produces audible preview
-    const fallbackVoice: PeriodicVoiceData = {
+    /*const fallbackVoice: PeriodicVoiceData = {
       kind: 'periodic',
       duty: 0.5,
       real: this.fallbackHarmonics.real,
@@ -101,7 +101,8 @@ export class InstrumentRegistry {
       attenuation: 0.6,
     };
 
-    return fallbackVoice;
+    return fallbackVoice;*/
+
     throw new Error(`voice for ${program} not found`)
   }
 }

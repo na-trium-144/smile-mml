@@ -13,7 +13,7 @@ import { sbDetuneToCents } from '../utils/conversion.js';
  */
 export function preparePlaybackEvents(events: Iterable<MMLEvent>): PreparedEvent[] {
   // Collect raw notes and channel control events per channel
-  const notesByChannel: Map<number, NoteEvent[]> = new Map();
+  const notesByChannel: Map<number, (NoteEvent & {portamentoTargetNote?: number})[]> = new Map();
   const tempoAndOtherEvents: PreparedEvent[] = [];
 
   for (const ev of events) {
@@ -66,7 +66,7 @@ export function preparePlaybackEvents(events: Iterable<MMLEvent>): PreparedEvent
     // 2. Merge Same-Pitch Ties and handle portamento combination:
     // e.g. C4&C4 -> single note with duration = C4 + C4
     // C4&C4_E -> (C4&C4)_E with target E
-    const merged: NoteEvent[] = [];
+    const merged: (NoteEvent & {portamentoTargetNote?: number})[] = [];
 
     for (let i = 0; i < rawNotes.length; i++) {
       const curr = rawNotes[i];

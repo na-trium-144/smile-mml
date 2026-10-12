@@ -10,11 +10,9 @@ import {
   useCallback,
   useEffect,
   useMemo,
-  type FC,
 } from "react";
 import type { MMLEvent } from "../parser/types.js";
 import { parseMML } from "../parser/vmmlParser.js";
-import type { InstrumentRegistry } from "../audio/banks/InstrumentRegistry.js";
 import { SynthEngine } from "../audio/synth/SynthEngine.js";
 import { MMLScheduler } from "../audio/scheduler/MMLScheduler.js";
 import { preparePlaybackEvents } from "../audio/track/trackProcessor.js";
@@ -73,7 +71,7 @@ export function AudioPlayer({ mml }: AudioPlayerProps) {
   const getVisualizerTick = useCallback(
     () =>
       schedulerRef.current?.getCurrentTick() ??
-      schedulerRef.current?.secondsToTick(currentTime),
+      schedulerRef.current?.secondsToTick(currentTime) ?? 0,
     [currentTime],
   );
 
