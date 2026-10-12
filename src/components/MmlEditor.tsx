@@ -19,13 +19,12 @@ export const MMLEditor = ({ mml, onChange }: MMLEditorProps) => {
   }, [mml]);
 
   return (
-    <div className="card card-border w-full h-screen">
-      <div className="card-body">
-        <div className="card-title flex flex-wrap items-baseline justify-between">
+    <details className="collapse collapse-card-like collapse-arrow collapse-card-like-border">
+      <summary className="collapse-title collapse-card-like-title flex flex-wrap items-baseline justify-between">
           <h2>MMLを編集</h2>
           <span className="text-sm text-right">{mml.length} 文字</span>
-        </div>
-
+      </summary>
+      <div className="collapse-content h-[calc(100vh-6rem)] flex flex-col">
         <div className="flex-1 textarea textarea-ghost w-[unset] touch-auto p-0">
           {/* <textarea> じゃないけどdaisyuiのtextareaクラスのborderなどのスタイルを適用 */}
           <AceEditor
@@ -47,6 +46,6 @@ export const MMLEditor = ({ mml, onChange }: MMLEditorProps) => {
           />
         </div>
       </div>
-    </div>
+    </details>
   );
 };

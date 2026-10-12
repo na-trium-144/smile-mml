@@ -10,8 +10,8 @@ export function WithHeaderAndSidebar(props: Props) {
   return (
     <>
       <header className="navbar bg-base-100">
-        <div className="flex-none">
-          <label htmlFor="SidebarToggle" className="btn btn-square btn-ghost">
+        <div className="navbar-start">
+          <label htmlFor="SidebarToggle" className="lg:hidden btn btn-ghost w-max">
             <svg
               aria-label="Menu"
               xmlns="http://www.w3.org/2000/svg"
@@ -26,9 +26,11 @@ export function WithHeaderAndSidebar(props: Props) {
                 d="M4 6h16M4 12h16M4 18h16"
               ></path>
             </svg>
+            ファイル
           </label>
         </div>
-        <h1 className="flex-1 text-xl">SmileMML</h1>
+        <h1 className="navbar-center text-2xl font-semibold">SmileMML</h1>
+        <div className="navbar-end"></div>
       </header>
 
       <div className="drawer lg:drawer-open">

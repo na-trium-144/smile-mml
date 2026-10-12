@@ -98,27 +98,30 @@ accent, info, success, and warning follows SmileBASIC3 color pallet: https://pet
 
 :root {
   --root-bg: var(--color-base-300);
-
-  @apply min-w-screen min-h-screen;
-}
-
-body {
-  @apply min-w-screen min-h-screen;
-}
-#root {
-  @apply min-w-screen min-h-screen;
 }
 
 @layer utilities.daisyui, utilities.custom;
 @layer utilities.custom {
   /* daisyuiよりも優先度が高く、 tailwind utilitiesよりも優先度が低いカスタムクラス  */
-  .card-border {
-    @apply border-base-border;
+  .card-border, .collapse-card-like-border {
+    border: var(--border) solid var(--color-base-border);
   }
-  .card {
+  .card, .collapse-card-like {
     @apply bg-base-200;
+  }
+  .card-title, .collapse-card-like-title {
+    @apply text-lg;
   }
   .modal-box {
     @apply border-2 border-base-border;
+  }
+
+  .about {
+    > h2 {
+      @apply text-lg mb-1;
+    }
+    > p, ul, div {
+      @apply ml-2 my-1 text-base-content/90;
+    }
   }
 }
