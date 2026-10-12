@@ -128,10 +128,14 @@ ace.define(
           regex: "[rR][#+\\-\\.\\d]*",
         },
 
-        // 11. text (音程 CDEFGAB) & numeric (半音記号・数値・付点)
+        // 11. text (音程 CDEFGAB, N) & numeric (半音記号・数値・付点)
         {
           token: ["sb3_text", "sb3_text", "sb3_numeric", "sb3_text", "sb3_string"],
           regex: "([cdefgabCDEFGAB])([#+\\-]*)([\\.\\d]*)([#+\\-]*)([&_]?)",
+        },
+        {
+          token: "sb3_text",
+          regex: "[nN]\\d+,?\\d*",
         },
 
         // 12. unknown (上記いずれにも当てはまらない不正な文字)
