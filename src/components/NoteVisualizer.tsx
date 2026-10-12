@@ -149,6 +149,8 @@ export const NoteVisualizer: FC<NoteVisualizerProps> = ({
 }) => {
   const canvasRectRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const canvasRectRef2 = useRef<HTMLDivElement>(null);
+  const canvasRef2 = useRef<HTMLCanvasElement>(null);
   const rafRef = useRef<number>(0);
 
   // Index notes by channel for faster lookup
@@ -185,20 +187,29 @@ export const NoteVisualizer: FC<NoteVisualizerProps> = ({
       ),
     [],
   );
+  const colorStatement = useMemo(
+    () =>
+      getComputedStyle(document.documentElement).getPropertyValue(
+        "--color-sb3-statement",
+      ),
+    [],
+  );
 
-  const [channelParams, setChannelParams] = useState<
-    (ChannelParams | undefined)[]
+  const soundingNotes = useRef<(VisualizerNote | undefined)[]>([]);
+  const [currentPrograms, setCurrentPrograms] = useState<
+    (number | undefined)[]
   >([]);
-  const [totalNotes, setTotalNotes] = useState<number>(0);
-  const [bpm, setBpm] = useState<number>();
 
   const draw = useCallback(() => {
     const canvasRect = canvasRectRef.current;
     const canvas = canvasRef.current;
-    if (!canvasRect || !canvas) return;
+    const canvasRect2 = canvasRectRef2.current;
+    const canvas2 = canvasRef2.current;
+    if (!canvasRect || !canvas || !canvasRect2 || !canvas2) return;
 
     const ctx = canvas.getContext("2d");
-    if (!ctx) return;
+    const ctx2 = canvas2.getContext("2d");
+    if (!ctx || !ctx2) return;
 
     const currentTick = getCurrentTick();
 
@@ -245,8 +256,6 @@ export const NoteVisualizer: FC<NoteVisualizerProps> = ({
     // For each channel, draw visible notes
     const notesByChannel = notesByChannelRef.current;
 
-    const channelParams: (ChannelParams | undefined)[] = [];
-
     for (let ci = 0; ci < channels.length; ci++) {
       const chIdx = channels[ci];
       const chNotes = notesByChannel.get(chIdx);
@@ -291,12 +300,7 @@ export const NoteVisualizer: FC<NoteVisualizerProps> = ({
           ctx.roundRect(bgX, yBase, bgW, CHANNEL_HEIGHT, SOUNDING_RADIUS);
           ctx.fill();
 
-          channelParams[ci] = {
-            program: note.program,
-            volume: note.volume,
-            velocity: note.velocity,
-            pan: note.pan,
-          };
+          soundingNotes.current[ci] = note;
         }
 
         // Draw note name
@@ -320,29 +324,91 @@ export const NoteVisualizer: FC<NoteVisualizerProps> = ({
     ctx.lineTo(halfWidth, height);
     ctx.stroke();
 
-    setChannelParams((prevParams) => {
+    const VEL_WIDTH = 32;
+    const PAN_WIDTH = 32;
+    const cw2 = Math.round((VEL_WIDTH + PAN_WIDTH) * dpr);
+    if (canvas2.width !== cw2 || canvas2.height !== ch) {
+      canvas2.width = cw2;
+      canvas2.height = ch;
+      canvas2.style.height = `${height}px`;
+    }
+
+    ctx2.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    // Clear
+    ctx2.clearRect(0, 0, width, height);
+    ctx2.font = `14px "M+ 1p", "M+ 1c", "M PLUS 1p"`;
+    ctx2.textBaseline = "middle";
+
+    for (let ci = 0; ci < channels.length; ci++) {
+      const p = soundingNotes.current[ci];
+      if (p) {
+        const yBase = ci * CHANNEL_HEIGHT;
+        const yCenter = yBase + CHANNEL_HEIGHT / 2;
+
+        ctx2.fillStyle = colorPrimary;
+        ctx2.beginPath();
+        ctx2.roundRect(
+          0,
+          yBase + CHANNEL_HEIGHT - 2,
+          (VEL_WIDTH * (p.velocity * p.volume)) / 127 / 127,
+          2,
+          2,
+        );
+        ctx2.fill();
+
+        ctx2.beginPath();
+        if (p.pan > 64) {
+          ctx2.roundRect(
+            VEL_WIDTH + PAN_WIDTH / 2,
+            yBase + CHANNEL_HEIGHT - 2,
+            ((PAN_WIDTH / 2) * (p.pan - 64)) / 64,
+            2,
+            2,
+          );
+        } else {
+          ctx2.roundRect(
+            VEL_WIDTH + PAN_WIDTH / 2 - (PAN_WIDTH * (64 - p.pan)) / 64,
+            yBase + CHANNEL_HEIGHT - 2,
+            (PAN_WIDTH * (64 - p.pan)) / 64,
+            2,
+            2,
+          );
+        }
+        ctx2.fill();
+
+        ctx2.fillStyle = colorStatement;
+        ctx2.textAlign = "center";
+        ctx2.fillText(
+          Math.round((p.velocity * p.volume) / 127).toString(),
+          VEL_WIDTH / 2,
+          yCenter,
+        );
+
+        ctx2.fillText(
+          Math.round(p.pan).toString(),
+          VEL_WIDTH + PAN_WIDTH / 2,
+          yCenter,
+        );
+      }
+    }
+
+    setCurrentPrograms((prev) => {
       let changed = false;
-      for (let ci = 0; ci < channelParams.length; ci++) {
-        const prev = prevParams[ci];
-        const current = channelParams[ci];
-        if (
-          current &&
-          (prev?.program != current.program ||
-            prev?.velocity != current.velocity ||
-            prev?.volume != current.volume ||
-            prev?.pan != current.pan)
-        ) {
+      for (let ci = 0; ci < soundingNotes.current.length; ci++) {
+        const currentProgram = soundingNotes.current[ci]?.program;
+        if (currentProgram !== undefined && prev[ci] !== currentProgram) {
           changed = true;
-          prevParams[ci] = channelParams[ci];
+          prev[ci] = currentProgram;
         }
       }
       if (changed) {
-        return prevParams.slice();
+        return prev.slice();
       } else {
-        return prevParams;
+        return prev;
       }
     });
-  }, [channels, getCurrentTick, colorBase100, colorPrimary]);
+  }, [channels, getCurrentTick, colorBase100, colorPrimary, colorStatement]);
 
   // Animation loop
   useEffect(() => {
@@ -391,52 +457,27 @@ export const NoteVisualizer: FC<NoteVisualizerProps> = ({
       >
         <canvas ref={canvasRef} style={{ imageRendering: "auto" }} />
       </div>
-      <div className="relative hidden md:flex flex-col text-sm text-center whitespace-nowrap">
+      <div className="relative hidden md:flex flex-col text-sm text-center whitespace-nowrap w-10">
+        {channels.map((_, ci) =>
+          currentPrograms[ci] ? (
+            <span key={ci} className="flex-1 basis-0 text-sb3-label">
+              @{currentPrograms[ci]}
+            </span>
+          ) : (
+            <span key={ci} className="flex-1" />
+          ),
+        )}
+      </div>
+      <div
+        ref={canvasRectRef2}
+        className="relative hidden md:block text-center whitespace-nowrap"
+        style={{ height: `${canvasHeight}px` }}
+      >
         <span className="absolute bottom-full inset-x-0 flex text-xs">
-          <span className="text-sb3-label w-11"></span>
           <span className="text-sb3-statement w-8">V*@V</span>
           <span className="text-sb3-statement w-8">P</span>
         </span>
-          {channels.map((_, ci) =>
-            channelParams[ci] ? (
-              <span key={ci} className="flex-1 basis-0 flex">
-                <span className="text-sb3-label w-11">
-                  @{channelParams[ci].program}
-                </span>
-                <span className="relative text-sb3-statement w-8">
-                  {Math.round(
-                    (channelParams[ci].velocity * channelParams[ci].volume) /
-                      127,
-                  )}
-                  <span
-                    className="absolute left-0 bottom-0 h-0.5 rounded-full bg-primary"
-                    style={{
-                      width:
-                        ((channelParams[ci].velocity *
-                          channelParams[ci].volume) /
-                          127 /
-                          127) *
-                          100 +
-                        "%",
-                    }}
-                  />
-                </span>
-                <span className="relative text-sb3-statement w-8">
-                  {channelParams[ci].pan}
-                  <span
-                    className="absolute bottom-0 h-0.5 rounded-full bg-primary"
-                    style={{
-                      left: channelParams[ci].pan > 64 ? "50%" : undefined,
-                      right: channelParams[ci].pan < 64 ? "50%" : undefined,
-                      width: Math.abs(channelParams[ci].pan / 64 - 1) * 50 + "%",
-                    }}
-                  />
-                </span>
-              </span>
-            ) : (
-              <span className="flex-1" />
-            ),
-          )}
+        <canvas ref={canvasRef2} style={{ imageRendering: "auto" }} />
       </div>
     </div>
   );
