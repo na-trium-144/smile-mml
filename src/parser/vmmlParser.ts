@@ -11,7 +11,6 @@ import type {
   LFOParams,
   ModulationParams,
   MMLEvent,
-  ParseOptions,
 } from './types.js';
 
 export const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'] as const;
@@ -956,86 +955,4 @@ export function splitMMLChannels(mml: string): { channels: string[]; initialKeyS
   channels[op] += mml.slice(s) + ' ';
 
   return { channels, initialKeyShift };
-}
-
-/**
- * Main MML Generator: parses all channels concurrently and yields events in chronological tick order.
- */
-export function* parseMML(mml: string, options?: ParseOptions): Generator<MMLEvent, void, unknown> {
-  const { channels, initialKeyShift } = splitMMLChannels(mml);
-  const globalKeyShift = (options?.keyShift ?? 0) + initialKeyShift;
-  const spd = options?.ticksPerWholeNote ?? 192;
-
-  const channelParsers: MMLChannelParser[] = [];
-  const channelGenerators: Array<Generator<MMLEvent, void, unknown> | null> = [];
-  const nextEvents: Array<IteratorResult<MMLEvent, void> | null> = [];
-
-  // Active channels that have non-empty MML string
-  const activeChannels = new Set<number>();
-  const loopedChannels = new Set<number>();
-
-  for (let ch = 0; ch < 16; ch++) {
-    if (channels[ch].trim() !== '') {
-      const parser = new MMLChannelParser(ch, channels[ch], mml, globalKeyShift, spd);
-      channelParsers.push(parser);
-      const gen = parser.nextEvent();
-      channelGenerators.push(gen);
-      nextEvents.push(gen.next());
-      activeChannels.add(ch);
-    } else {
-      channelGenerators.push(null);
-      nextEvents.push(null);
-    }
-  }
-
-  while (true) {
-    // Find the event with the earliest tick
-    let minTick = Infinity;
-    let selectedCh = -1;
-
-    for (let ch = 0; ch < 16; ch++) {
-      const cur = nextEvents[ch];
-      if (cur && !cur.done && cur.value) {
-        const tick = cur.value.tick;
-        if (tick < minTick) {
-          minTick = tick;
-          selectedCh = ch;
-        }
-      }
-    }
-
-    if (selectedCh === -1) {
-      // All channels completed
-      break;
-    }
-
-    const eventResult = nextEvents[selectedCh]!;
-    const event = eventResult.value!;
-
-    // Advance selected channel generator
-    const gen = channelGenerators[selectedCh]!;
-    nextEvents[selectedCh] = gen.next();
-
-    // Check for loop event
-    if (event.type === 'loop' && event.isInfinite) {
-      loopedChannels.add(selectedCh);
-      if (options?.stopOnInfiniteLoop) {
-        // If all active channels looped or ended, we can stop
-        let allLoopedOrEnded = true;
-        for (const ch of activeChannels) {
-          const res = nextEvents[ch];
-          if (!loopedChannels.has(ch) && res && !res.done) {
-            allLoopedOrEnded = false;
-            break;
-          }
-        }
-        if (allLoopedOrEnded) {
-          yield event;
-          break;
-        }
-      }
-    }
-
-    yield event;
-  }
 }

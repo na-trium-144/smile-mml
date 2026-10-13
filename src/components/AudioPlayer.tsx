@@ -1,7 +1,7 @@
 /**
  * AudioPlayer Component
  * Provides Play/Pause/Stop UI with progress seek bar.
- * Receives MML text and InstrumentRegistry; parses MML on play if changed.
+ * Receives MML text and InstrumentRegistry; parses MML in real-time within MMLScheduler.
  */
 
 import {
@@ -9,15 +9,11 @@ import {
   useRef,
   useCallback,
   useEffect,
-  useMemo,
 } from "react";
-import type { MMLEvent } from "../parser/types.js";
-import { parseMML } from "../parser/vmmlParser.js";
 import { SynthEngine } from "../audio/synth/SynthEngine.js";
 import { MMLScheduler } from "../audio/scheduler/MMLScheduler.js";
-import { preparePlaybackEvents } from "../audio/track/trackProcessor.js";
 import { useInstrumentContext } from "./InstrumentContext.js";
-import { NoteVisualizer, buildVisualizerNotes } from "./NoteVisualizer.js";
+import { NoteVisualizer } from "./NoteVisualizer.js";
 import clsx from "clsx";
 
 interface AudioPlayerProps {
@@ -41,31 +37,16 @@ export function AudioPlayer({ mml }: AudioPlayerProps) {
   const [playbackState, setPlaybackState] = useState<PlaybackState>(null);
   const [currentTime, setCurrentTime] = useState(0);
   const [totalTime, setTotalTime] = useState(0);
+  const [activeChannels, setActiveChannels] = useState<number[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [schedulerError, setSchedulerError] = useState<string[]>([]);
 
-  // Track last‐parsed MML to avoid redundant parsing
+  // Track last-parsed MML to recreate scheduler if MML text changes
   const lastParsedMml = useRef("");
-  const eventsRef = useRef<MMLEvent[]>([]);
   const mmlHasChanged = useCallback(() => mml !== lastParsedMml.current, [mml]);
-  const parseMml = useCallback<() => MMLEvent[]>(() => {
-    const events: MMLEvent[] = [];
-    for (const ev of parseMML(mml, { stopOnInfiniteLoop: true })) {
-      events.push(ev);
-    }
-    lastParsedMml.current = mml;
-    return events;
-  }, [mml]);
 
   const synthRef = useRef<SynthEngine | null>(null);
   const schedulerRef = useRef<MMLScheduler | null>(null);
-
-  // Build visualizer data from parsed events
-  const visualizerData = useMemo(
-    () => buildVisualizerNotes(eventsRef.current),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [eventsRef.current],
-  );
 
   // Provide a stable callback for NoteVisualizer to read current time from scheduler
   const getVisualizerTick = useCallback(
@@ -73,6 +54,11 @@ export function AudioPlayer({ mml }: AudioPlayerProps) {
       schedulerRef.current?.getCurrentTick() ??
       schedulerRef.current?.secondsToTick(currentTime) ?? 0,
     [currentTime],
+  );
+
+  const getNotesForChannel = useCallback(
+    (ch: number) => schedulerRef.current?.getChannelVisualizerNotes(ch) ?? [],
+    [],
   );
 
   // Cleanup on unmount
@@ -90,43 +76,40 @@ export function AudioPlayer({ mml }: AudioPlayerProps) {
     return synthRef.current;
   }, [registry]);
 
-  const buildScheduler = useCallback<(events: MMLEvent[]) => MMLScheduler>(
-    (events) => {
-      setSchedulerError([]);
+  const buildScheduler = useCallback<() => MMLScheduler>(() => {
+    setSchedulerError([]);
 
-      const synth = getSynth();
-      const preparedEvents = preparePlaybackEvents(events);
-      const scheduler = new MMLScheduler(
-        synth,
-        preparedEvents,
-        TICKS_PER_WHOLE_NOTE,
-        (e) => {
-          console.error("MMLScheduler error:", e);
-          setSchedulerError((prev) => {
-            if (prev.includes(String(e))) {
-              return prev;
-            } else {
-              return prev.concat([String(e)]);
-            }
-          });
-        },
-      );
+    const synth = getSynth();
+    const scheduler = new MMLScheduler(
+      synth,
+      mml,
+      TICKS_PER_WHOLE_NOTE,
+      (e) => {
+        console.error("MMLScheduler error:", e);
+        setSchedulerError((prev) => {
+          if (prev.includes(String(e))) {
+            return prev;
+          } else {
+            return prev.concat([String(e)]);
+          }
+        });
+      },
+    );
 
-      scheduler.onProgress = (curSec, totalSec) => {
-        setCurrentTime(curSec);
-        setTotalTime(totalSec);
-      };
+    scheduler.onProgress = (curSec, totalSec) => {
+      setCurrentTime(curSec);
+      setTotalTime(totalSec);
+    };
 
-      scheduler.onEnded = () => {
-        setPlaybackState("paused");
-        setCurrentTime(0);
-      };
+    scheduler.onEnded = () => {
+      setPlaybackState("paused");
+      setCurrentTime(0);
+    };
 
-      setTotalTime(scheduler.duration);
-      return scheduler;
-    },
-    [getSynth],
-  );
+    setActiveChannels(scheduler.channels);
+    setTotalTime(scheduler.duration);
+    return scheduler;
+  }, [getSynth, mml]);
 
   // ── Play / Pause / Stop ──
 
@@ -136,17 +119,11 @@ export function AudioPlayer({ mml }: AudioPlayerProps) {
     setSchedulerError([]);
 
     try {
-      if (mmlHasChanged()) {
+      if (mmlHasChanged() || !schedulerRef.current) {
         schedulerRef.current?.stop();
         schedulerRef.current?.dispose();
-        schedulerRef.current = null;
-        setPlaybackState(null);
-        eventsRef.current = parseMml();
-      }
-
-      // If not initialized, parse MML and rebuild scheduler
-      if (!schedulerRef.current) {
-        schedulerRef.current = buildScheduler(eventsRef.current);
+        schedulerRef.current = buildScheduler();
+        lastParsedMml.current = mml;
       }
 
       await schedulerRef.current.play();
@@ -155,7 +132,7 @@ export function AudioPlayer({ mml }: AudioPlayerProps) {
       console.error("Playback error:", err);
       setError(`エラー: ${err instanceof Error ? err.message : String(err)}`);
     }
-  }, [playbackState, parseMml, buildScheduler, mmlHasChanged]);
+  }, [playbackState, buildScheduler, mmlHasChanged, mml]);
 
   const handlePause = useCallback(() => {
     schedulerRef.current?.pause();
@@ -177,11 +154,15 @@ export function AudioPlayer({ mml }: AudioPlayerProps) {
     setCurrentTime(seekTo);
   }, []);
 
+  const isInfinite = !Number.isFinite(totalTime);
+  const seekMax =
+    Number.isFinite(totalTime) && totalTime > 0
+      ? totalTime
+      : Math.max(currentTime + 60, 60);
+
   return (
     <div className="card card-border w-full">
       <div className="card-body gap-4">
-        {/*<h2 className="card-title">オーディオ再生</h2>*/}
-
         {/* Transport Controls + Progress */}
         <div className="flex items-center gap-2">
           <div className="join">
@@ -223,33 +204,33 @@ export function AudioPlayer({ mml }: AudioPlayerProps) {
             type="range"
             className="max-sm:hidden range range-primary range-xs flex-1"
             min={0}
-            max={totalTime || 1}
+            max={seekMax}
             step={0.01}
             value={currentTime}
             onChange={handleSeek}
           />
           <span className="sm:hidden mx-2">/</span>
           <span className="text-sm min-w-12">
-            {formatTime(totalTime)}
+            {isInfinite ? "∞" : formatTime(totalTime)}
           </span>
         </div>
         <input
-            type="range"
-            className="sm:hidden w-full range range-primary range-xs"
-            min={0}
-            max={totalTime || 1}
-            step={0.01}
-            value={currentTime}
-            onChange={handleSeek}
-          />
+          type="range"
+          className="sm:hidden w-full range range-primary range-xs"
+          min={0}
+          max={seekMax}
+          step={0.01}
+          value={currentTime}
+          onChange={handleSeek}
+        />
 
         {/* Note Visualizer */}
-        {visualizerData.channels.length > 0 && (
+        {activeChannels.length > 0 && (
           <NoteVisualizer
-            notes={visualizerData.notes}
-            channels={visualizerData.channels}
+            channels={activeChannels}
             getCurrentTick={getVisualizerTick}
             isPlaying={playbackState === "playing"}
+            getNotesForChannel={getNotesForChannel}
           />
         )}
 

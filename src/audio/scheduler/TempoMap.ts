@@ -13,33 +13,65 @@ export class TempoMap {
   private points: TempoPoint[] = [];
   public readonly ticksPerQuarter: number;
 
-  constructor(tempoEvents: { tick: number; bpm: number }[], ticksPerWholeNote: number = 192) {
+  constructor(tempoEvents: { tick: number; bpm: number }[] = [], ticksPerWholeNote: number = 192) {
     this.ticksPerQuarter = ticksPerWholeNote / 4;
 
-    const sorted = [...tempoEvents].sort((a, b) => a.tick - b.tick);
+    this.points.push({ tick: 0, bpm: 120, seconds: 0 });
 
-    // Initial default tempo if not starting at tick 0
-    if (sorted.length === 0 || sorted[0].tick > 0) {
-      sorted.unshift({ tick: 0, bpm: 120 });
+    const sorted = [...tempoEvents].sort((a, b) => a.tick - b.tick);
+    for (const ev of sorted) {
+      this.addTempo(ev.tick, ev.bpm);
+    }
+  }
+
+  /**
+   * Dynamically add a tempo point to the map.
+   */
+  public addTempo(tick: number, bpm: number): void {
+    if (this.points.length === 0) {
+      this.points.push({ tick: 0, bpm: 120, seconds: 0 });
+    }
+    const last = this.points[this.points.length - 1];
+    if (tick === last.tick) {
+      last.bpm = bpm;
+      return;
+    }
+    if (tick > last.tick) {
+      const deltaTicks = tick - last.tick;
+      const secondsPerTick = 60 / (last.bpm * this.ticksPerQuarter);
+      const accumulatedSeconds = last.seconds + deltaTicks * secondsPerTick;
+      this.points.push({
+        tick,
+        bpm,
+        seconds: accumulatedSeconds,
+      });
+      return;
     }
 
+    // If tick < last.tick (rare out-of-order event), insert in order and recalculate
+    const insertIdx = this.points.findIndex((p) => p.tick >= tick);
+    if (insertIdx !== -1 && this.points[insertIdx].tick === tick) {
+      this.points[insertIdx].bpm = bpm;
+    } else {
+      const idx = insertIdx === -1 ? this.points.length : insertIdx;
+      this.points.splice(idx, 0, { tick, bpm, seconds: 0 });
+    }
+    this.recalculateSeconds();
+  }
+
+  private recalculateSeconds(): void {
     let accumulatedSeconds = 0;
     let prevTick = 0;
     let prevBpm = 120;
-
-    for (const ev of sorted) {
-      if (ev.tick > prevTick) {
-        const deltaTicks = ev.tick - prevTick;
+    for (const point of this.points) {
+      if (point.tick > prevTick) {
+        const deltaTicks = point.tick - prevTick;
         const secondsPerTick = 60 / (prevBpm * this.ticksPerQuarter);
         accumulatedSeconds += deltaTicks * secondsPerTick;
       }
-      this.points.push({
-        tick: ev.tick,
-        bpm: ev.bpm,
-        seconds: accumulatedSeconds,
-      });
-      prevTick = ev.tick;
-      prevBpm = ev.bpm;
+      point.seconds = accumulatedSeconds;
+      prevTick = point.tick;
+      prevBpm = point.bpm;
     }
   }
 

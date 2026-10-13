@@ -16,10 +16,8 @@ import {
   useMemo,
   useState,
 } from "react";
-import type { NoteEvent, MMLEvent } from "../parser/types.js";
-import { NOTE_NAMES } from "../parser/vmmlParser.js";
 
-interface ChannelParams {
+export interface ChannelParams {
   program: number;
   velocity: number;
   volume: number;
@@ -32,57 +30,6 @@ export interface VisualizerNote extends ChannelParams {
   octave: number; // extracted octave number
   startTick: number; // start time in ticks
   endTick: number; // end time in ticks (start + duration)
-}
-
-/** Builds visualizer data from parsed MML events */
-export function buildVisualizerNotes(events: MMLEvent[]): {
-  notes: VisualizerNote[];
-  channels: number[];
-} {
-  const notes: VisualizerNote[] = [];
-  const channelSet = new Set<number>();
-  let maxTick = 0;
-
-  for (const ev of events) {
-    if (ev.type === "note") {
-      const noteEv = ev as NoteEvent;
-      channelSet.add(noteEv.channel);
-
-      const noteStr =
-        NOTE_NAMES[noteEv.baseNoteIndex] +
-        (noteEv.totalAccidentials > 0
-          ? "#".repeat(noteEv.totalAccidentials)
-          : "b".repeat(-noteEv.totalAccidentials)) +
-        noteEv.noteValue.toString() +
-        ".".repeat(noteEv.totalDots) +
-        (noteEv.isTie ? "&" : "") +
-        (noteEv.isPortamento ? "_" : "");
-
-      notes.push({
-        channel: noteEv.channel,
-        noteStr,
-        octave: noteEv.baseOctave,
-        startTick: noteEv.tick,
-        endTick: noteEv.tick + noteEv.duration,
-        program: noteEv.program,
-        volume: noteEv.volume,
-        velocity: noteEv.velocity,
-        pan: noteEv.pan,
-      });
-
-      const noteEnd = noteEv.tick + noteEv.duration;
-      if (noteEnd > maxTick) maxTick = noteEnd;
-    } else if (ev.type !== "rest" && ev.type !== "loop" && ev.type !== "end") {
-      if (ev.tick > maxTick) maxTick = ev.tick;
-    }
-  }
-
-  const channels = Array.from(channelSet).sort((a, b) => a - b);
-
-  // Sort notes by startSec for efficient binary search
-  notes.sort((a, b) => a.startTick - b.startTick || a.channel - b.channel);
-
-  return { notes, channels };
 }
 
 /**
@@ -123,15 +70,17 @@ function octaveColor(octave: number): string {
   }
 }
 
-interface NoteVisualizerProps {
+export interface NoteVisualizerProps {
   /** Visualizer data (pre-built from events) */
-  notes: VisualizerNote[];
+  notes?: VisualizerNote[];
   /** Active channel indices */
   channels: number[];
   /** Function that returns current playback time in ticks */
   getCurrentTick: () => number;
   /** Whether playback is currently active */
   isPlaying: boolean;
+  /** Optional function to get notes for a channel directly from scheduler */
+  getNotesForChannel?: (channel: number) => VisualizerNote[];
 }
 
 const CHANNEL_HEIGHT = 20;
@@ -141,10 +90,11 @@ const PIXELS_PER_TICK = 4; // horizontal scale
 const FONT_SIZE = 16;
 
 export const NoteVisualizer: FC<NoteVisualizerProps> = ({
-  notes,
+  notes = [],
   channels,
   getCurrentTick,
   isPlaying,
+  getNotesForChannel,
 }) => {
   const canvasRectRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -152,10 +102,11 @@ export const NoteVisualizer: FC<NoteVisualizerProps> = ({
   const canvasRef2 = useRef<HTMLCanvasElement>(null);
   const rafRef = useRef<number>(0);
 
-  // Index notes by channel for faster lookup
+  // Index notes by channel for faster lookup (when getNotesForChannel is not provided)
   const notesByChannelRef = useRef<Map<number, VisualizerNote[]>>(new Map());
 
   useEffect(() => {
+    if (getNotesForChannel) return;
     const map = new Map<number, VisualizerNote[]>();
     for (const ch of channels) {
       map.set(ch, []);
@@ -170,7 +121,7 @@ export const NoteVisualizer: FC<NoteVisualizerProps> = ({
     }
     // Each channel's notes are already sorted by startSec
     notesByChannelRef.current = map;
-  }, [notes, channels]);
+  }, [notes, channels, getNotesForChannel]);
 
   const colorBase100 = useMemo(
     () =>
@@ -257,7 +208,9 @@ export const NoteVisualizer: FC<NoteVisualizerProps> = ({
 
     for (let ci = 0; ci < channels.length; ci++) {
       const chIdx = channels[ci];
-      const chNotes = notesByChannel.get(chIdx);
+      const chNotes = getNotesForChannel
+        ? getNotesForChannel(chIdx)
+        : notesByChannel.get(chIdx);
       if (!chNotes || chNotes.length === 0) continue;
 
       const yBase = ci * CHANNEL_HEIGHT;
@@ -407,7 +360,7 @@ export const NoteVisualizer: FC<NoteVisualizerProps> = ({
         return prev;
       }
     });
-  }, [channels, getCurrentTick, colorBase100, colorPrimary, colorStatement]);
+  }, [channels, getCurrentTick, colorBase100, colorPrimary, colorStatement, getNotesForChannel]);
 
   // Animation loop
   useEffect(() => {

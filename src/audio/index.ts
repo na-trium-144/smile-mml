@@ -30,9 +30,6 @@ export { ModulationHelper } from './synth/ModulationHelper.js';
 export { MMLScheduler } from './scheduler/MMLScheduler.js';
 export { TempoMap } from './scheduler/TempoMap.js';
 
-// Track preprocessing
-export { preparePlaybackEvents } from './track/trackProcessor.js';
-
 // Utilities
 export {
   midiNoteToFrequency,
