@@ -111,6 +111,18 @@ export function AudioPlayer({ mml }: AudioPlayerProps) {
     return scheduler;
   }, [getSynth, mml]);
 
+  // Initialize or re-create scheduler when MML changes so totalTime is immediately known
+  useEffect(() => {
+    if (mmlHasChanged() || !schedulerRef.current) {
+      schedulerRef.current?.stop();
+      schedulerRef.current?.dispose();
+      schedulerRef.current = buildScheduler();
+      lastParsedMml.current = mml;
+      setCurrentTime(0);
+      setPlaybackState(null);
+    }
+  }, [mml, buildScheduler, mmlHasChanged]);
+
   // ── Play / Pause / Stop ──
 
   const handlePlay = useCallback(async () => {
@@ -154,11 +166,7 @@ export function AudioPlayer({ mml }: AudioPlayerProps) {
     setCurrentTime(seekTo);
   }, []);
 
-  const isInfinite = !Number.isFinite(totalTime);
-  const seekMax =
-    Number.isFinite(totalTime) && totalTime > 0
-      ? totalTime
-      : Math.max(currentTime + 60, 60);
+  const seekMax = Math.max(totalTime, currentTime) || 1;
 
   return (
     <div className="card card-border w-full">
@@ -211,7 +219,7 @@ export function AudioPlayer({ mml }: AudioPlayerProps) {
           />
           <span className="sm:hidden mx-2">/</span>
           <span className="text-sm min-w-12">
-            {isInfinite ? "∞" : formatTime(totalTime)}
+            {formatTime(totalTime)}
           </span>
         </div>
         <input

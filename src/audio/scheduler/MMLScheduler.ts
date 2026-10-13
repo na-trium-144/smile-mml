@@ -25,6 +25,7 @@ interface ChannelState {
   activeNote: (NoteEvent & { portamentoTargetNote?: number; isSlur?: boolean }) | null;
   lastEmittedNote: { noteNumber: number; tick: number; duration: number; isTie: boolean } | null;
   isFinished: boolean;
+  firstInfiniteLoopReached: boolean;
 }
 
 export class MMLScheduler {
@@ -59,9 +60,8 @@ export class MMLScheduler {
   // Lookahead settings
   private readonly lookaheadSeconds = 0.15; // 150ms lookahead for WebAudio
   private readonly scheduleIntervalMs = 25; // 25ms timer interval
-  // NoteVisualizer requires +/- 128 ticks. We look ahead by 512 ticks
-  // to ensure visualizer display and 1-note lookahead for portamento & ties are always ready.
-  private readonly lookaheadTicks = 512;
+  // NoteVisualizer requires +/- 128 ticks. Default lookahead ensures at least visualizer range.
+  private readonly lookaheadTicks = 256;
 
   private scheduleTimerId: number | null = null;
   private progressTimerId: number | null = null;
@@ -110,17 +110,98 @@ export class MMLScheduler {
           activeNote: null,
           lastEmittedNote: null,
           isFinished: Boolean(nextResult.done),
+          firstInfiniteLoopReached: false,
         });
       }
     }
 
-    // Initial lookahead parse: parse first lookaheadTicks (e.g. 512 ticks)
-    this.parseUntil(this.lookaheadTicks);
+    // First pass: parse until all channels reach their first infinite loop or end.
+    // This immediately determines totalDurationSeconds (entire song for finite MML,
+    // or first loop duration for infinite MML).
+    this.parseFirstPass();
+  }
+
+  /**
+   * Initial batch parse in constructor.
+   * Advances all channels until they finish or encounter their first infinite loop.
+   */
+  private parseFirstPass(): void {
+    while (true) {
+      let minTick = Infinity;
+      let selectedCh = -1;
+
+      for (const [ch, state] of this.channelStates) {
+        if (
+          state.isFinished ||
+          state.firstInfiniteLoopReached ||
+          !state.nextResult ||
+          state.nextResult.done
+        ) {
+          continue;
+        }
+        const tick = state.nextResult.value.tick;
+        if (tick < minTick) {
+          minTick = tick;
+          selectedCh = ch;
+        }
+      }
+
+      if (selectedCh === -1) {
+        // All channels have finished or reached their first infinite loop
+        break;
+      }
+
+      const state = this.channelStates.get(selectedCh)!;
+      const event = state.nextResult!.value!;
+
+      if (event.type === "loop" && event.isInfinite) {
+        this.isInfiniteLoop = true;
+        state.firstInfiniteLoopReached = true;
+        // Do not advance generator past this infinite loop in the first pass
+        continue;
+      }
+
+      state.nextResult = state.generator.next();
+      if (state.nextResult.done) {
+        state.isFinished = true;
+      }
+
+      this.processEvent(state, event);
+    }
+
+    if (!this.isInfiniteLoop) {
+      // Finite MML: all channels completed, flush any remaining activeNotes
+      this.flushAllChannels();
+      this.allFinished = true;
+    } else {
+      // Infinite MML: reset firstInfiniteLoopReached so playback can advance past it,
+      // and emit any non-tied, non-portamento activeNotes from the first loop.
+      for (const [, state] of this.channelStates) {
+        state.firstInfiniteLoopReached = false;
+        if (
+          state.activeNote &&
+          !state.activeNote.isTie &&
+          (!state.activeNote.isPortamento || state.activeNote.portamentoTargetNote !== undefined)
+        ) {
+          this.emitPreparedNote(state.activeNote);
+          state.lastEmittedNote = state.activeNote;
+          state.activeNote = null;
+        }
+      }
+    }
+
     this.ensureEventsSorted();
+
+    // Duration is now known: full duration for finite, 1st loop duration for infinite
+    this.totalDurationSeconds = this.tempoMap.tickToSeconds(this.maxTick);
   }
 
   public get duration(): number {
-    return this.isInfiniteLoop ? Infinity : this.totalDurationSeconds;
+    return this.totalDurationSeconds;
+  }
+
+  public get isInfinite(): boolean {
+    return this.isInfiniteLoop;
   }
 
   public get playing(): boolean {
@@ -136,12 +217,17 @@ export class MMLScheduler {
   }
 
   /**
-   * Parse events from channels until all active channels advance past targetTick.
+   * Parse events from channels until all active channels advance past targetTick,
+   * AND all pending ties or unresolved portamento targets (started at or before targetTick)
+   * are completely resolved by following notes.
    */
   public parseUntil(targetTick: number): void {
     if (this.allFinished) return;
 
-    while (true) {
+    let iterations = 0;
+    const maxIterations = 20000; // Safeguard against pathological infinite tie MMLs
+
+    while (iterations++ < maxIterations) {
       let minTick = Infinity;
       let selectedCh = -1;
 
@@ -160,12 +246,32 @@ export class MMLScheduler {
         // All active channels have completed
         this.flushAllChannels();
         this.allFinished = true;
-        this.totalDurationSeconds = this.tempoMap.tickToSeconds(this.maxTick);
+        if (!this.isInfiniteLoop) {
+          this.totalDurationSeconds = this.tempoMap.tickToSeconds(this.maxTick);
+        }
         break;
       }
 
       if (minTick > targetTick) {
-        break;
+        // minTick has passed targetTick.
+        // Check if any channel still has an unresolved tie or portamento target.
+        let hasPending = false;
+        for (const [, state] of this.channelStates) {
+          if (state.isFinished) continue;
+          if (
+            state.activeNote &&
+            (state.activeNote.isTie ||
+              (state.activeNote.isPortamento && state.activeNote.portamentoTargetNote === undefined))
+          ) {
+            hasPending = true;
+            break;
+          }
+        }
+
+        if (!hasPending) {
+          // All pending ties and portamentos are resolved!
+          break;
+        }
       }
 
       const state = this.channelStates.get(selectedCh)!;
@@ -178,6 +284,10 @@ export class MMLScheduler {
       }
 
       this.processEvent(state, event);
+    }
+
+    if (this.eventsNeedSort) {
+      this.ensureEventsSorted();
     }
   }
 
@@ -228,6 +338,12 @@ export class MMLScheduler {
     }
 
     if (event.type === "note") {
+      // Track maxTick from raw note duration as well
+      const noteEnd = event.tick + event.duration;
+      if (noteEnd > this.maxTick) {
+        this.maxTick = noteEnd;
+      }
+
       // 1. Build VisualizerNote for real-time display
       const noteStr =
         NOTE_NAMES[event.baseNoteIndex] +
@@ -448,6 +564,7 @@ export class MMLScheduler {
       this.pause();
     }
 
+    // For infinite loops, allow seeking anywhere >= 0. For finite, clamp to totalDurationSeconds.
     const maxSec = this.isInfiniteLoop ? Infinity : this.totalDurationSeconds;
     this.playbackOffsetSeconds = Math.max(0, Math.min(maxSec, seconds));
     this.synth.stopAll();
@@ -499,7 +616,7 @@ export class MMLScheduler {
         currentAudioTime - this.playbackStartAudioTime;
       const currentTick = this.tempoMap.secondsToTick(currentPlaybackSeconds);
 
-      // Real-time advance: always parse ahead by lookaheadTicks
+      // Real-time advance: parse ahead by lookaheadTicks AND resolve any ties/portamentos
       this.parseUntil(currentTick + this.lookaheadTicks);
       this.ensureEventsSorted();
 
@@ -583,12 +700,7 @@ export class MMLScheduler {
   private notifyProgress(): void {
     const curSec = this.getCurrentSeconds();
     const curTick = this.getCurrentTick();
-    const dur = this.isInfiniteLoop
-      ? Infinity
-      : (this.allFinished
-          ? this.totalDurationSeconds
-          : this.tempoMap.tickToSeconds(this.maxTick));
-    this.onProgress?.(curSec, dur, curTick);
+    this.onProgress?.(curSec, this.totalDurationSeconds, curTick);
   }
 
   private stopSchedulerLoop(): void {
