@@ -1,3 +1,4 @@
+import clsx from "clsx";
 import type { ReactNode } from "react";
 
 interface Props {
@@ -10,7 +11,10 @@ export function WithHeaderAndSidebar(props: Props) {
     <>
       <header className="navbar bg-base-100">
         <div className="navbar-start">
-          <label htmlFor="SidebarToggle" className="lg:hidden btn btn-ghost w-max">
+          <label
+            htmlFor="SidebarToggle"
+            className="lg:hidden btn btn-ghost w-max"
+          >
             <svg
               aria-label="Menu"
               xmlns="http://www.w3.org/2000/svg"
@@ -28,8 +32,8 @@ export function WithHeaderAndSidebar(props: Props) {
             ファイル
           </label>
         </div>
-        <h1 className="navbar-center text-2xl font-semibold">
-          <img src="/favicon-white.svg" className="h-10 mr-2" />
+        <h1 className="navbar-center mx-4 text-2xl font-semibold">
+          <img src="/favicon-white.svg" className="size-10 mr-2" />
           SmileMML
         </h1>
         <div className="navbar-end"></div>
@@ -37,7 +41,7 @@ export function WithHeaderAndSidebar(props: Props) {
 
       <div className="drawer lg:drawer-open">
         <input type="checkbox" id="SidebarToggle" className="drawer-toggle" />
-        <div className="drawer-content flex flex-col items-center p-8">
+        <div className="drawer-content flex flex-col items-center p-2 sm:p-4 md:p-8">
           {/* Page content here */}
           {props.children}
         </div>
@@ -47,7 +51,7 @@ export function WithHeaderAndSidebar(props: Props) {
             aria-label="close sidebar"
             className="drawer-overlay"
           />
-          <div className="bg-base-200 min-h-full w-80 p-4 space-y-4">
+          <div className="bg-base-200 h-full w-80 p-2 sm:p-4 flex flex-col space-y-2">
             <SidebarContent {...props} />
           </div>
         </div>
@@ -59,13 +63,50 @@ export function WithHeaderAndSidebar(props: Props) {
 function SidebarContent(props: Props) {
   return (
     <>
-      {/* ── MML File ── */}
-      <div>
-        <h3 className="font-bold mb-2">📄 MMLファイル</h3>
+      <h3 className="font-semibold text-lg">MMLを選択</h3>
+      <div
+        className={clsx(
+          "min-h-0 shrink overflow-y-auto bg-base-200",
+          "scrollbar-thumb-current/35 scrollbar-track-transparent",
+        )}
+      >
+        <ul className="menu w-full h-max p-0">
+          <li>
+            <button className="text-base-content/70">サンプル1</button>
+          </li>
+          <li>
+            <button className="text-base-content/70">サンプル2</button>
+          </li>
+          <li>
+            <button className="">hoge</button>
+          </li>
+          <li>
+            <button className="">hoge</button>
+          </li>
+          <li>
+            <button className="menu-active">無題</button>
+          </li>
+          <li>
+            <button className="justify-center">+ 新規作成</button>
+          </li>
+        </ul>
+      </div>
+      <div className="divider" />
+      <h3 className="font-semibold text-lg">ファイルをインポート</h3>
+      <p className="mx-2 text-paragraph text-sm">
+        .MML ファイルを読み込むことができます。
+      </p>
+      <div className="flex justify-center">
+        <label
+          htmlFor="SidebarImportMML"
+          className="btn btn-primary btn-soft btn-sm"
+        >
+          ファイルを選択...
+        </label>
         <input
           type="file"
-          className="file-input file-input-bordered file-input-sm w-full"
-          accept=".mml,.txt"
+          id="SidebarImportMML"
+          className="hidden"
           onChange={(e) => {
             if (e.target.files?.[0]) {
               props.loadFile(e.target.files[0]);
@@ -73,7 +114,9 @@ function SidebarContent(props: Props) {
           }}
         />
       </div>
-
+      <div className="divider" />
+      <h3 className="font-semibold text-lg">ファイルをエクスポート</h3>
+      <div>TODO</div>
     </>
   );
 }

@@ -206,7 +206,7 @@ export function AudioPlayer({ mml }: AudioPlayerProps) {
             )}
             <button
               type="button"
-              className="btn join-item"
+              className="btn btn-soft join-item"
               onClick={handleStop}
               disabled={playbackState === null}
               title="停止"
@@ -216,22 +216,32 @@ export function AudioPlayer({ mml }: AudioPlayerProps) {
           </div>
 
           {/* Progress Bar */}
-          <span className="text-sm font-mono min-w-12 text-right">
+          <span className="max-sm:flex-1 text-sm min-w-12 text-right">
             {formatTime(currentTime)}
           </span>
           <input
             type="range"
-            className="range range-primary range-xs flex-1"
+            className="max-sm:hidden range range-primary range-xs flex-1"
             min={0}
             max={totalTime || 1}
             step={0.01}
             value={currentTime}
             onChange={handleSeek}
           />
-          <span className="text-sm font-mono min-w-12">
+          <span className="sm:hidden mx-2">/</span>
+          <span className="text-sm min-w-12">
             {formatTime(totalTime)}
           </span>
         </div>
+        <input
+            type="range"
+            className="sm:hidden w-full range range-primary range-xs"
+            min={0}
+            max={totalTime || 1}
+            step={0.01}
+            value={currentTime}
+            onChange={handleSeek}
+          />
 
         {/* Note Visualizer */}
         {visualizerData.channels.length > 0 && (

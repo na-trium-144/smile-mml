@@ -143,7 +143,7 @@ function LicenseAccordion(license: PackageLicense) {
       className="collapse collapse-arrow -mx-1"
       name="AboutLicenseAccordion"
     >
-      <summary className="collapse-title p-1 pr-12 w-max">
+      <summary className="collapse-title p-1 pr-12 w-max max-w-full">
         <a href={license.href} className="link link-primary" target="_blank">
           {license.name}
         </a>{" "}
