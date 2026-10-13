@@ -22,8 +22,7 @@ interface ChannelState {
   parser: MMLChannelParser;
   generator: Generator<MMLEvent, void, unknown>;
   nextResult: IteratorResult<MMLEvent, void> | null;
-  activeNote: (NoteEvent & { portamentoTargetNote?: number; isSlur?: boolean }) | null;
-  lastEmittedNote: { noteNumber: number; tick: number; duration: number; isTie: boolean } | null;
+  pendingNote: (NoteEvent & { portamentoTargetNote?: number; isSlur?: boolean }) | null;
   isFinished: boolean;
   firstInfiniteLoopReached: boolean;
 }
@@ -107,8 +106,7 @@ export class MMLScheduler {
           parser,
           generator,
           nextResult,
-          activeNote: null,
-          lastEmittedNote: null,
+          pendingNote: null,
           isFinished: Boolean(nextResult.done),
           firstInfiniteLoopReached: false,
         });
@@ -170,23 +168,15 @@ export class MMLScheduler {
     }
 
     if (!this.isInfiniteLoop) {
-      // Finite MML: all channels completed, flush any remaining activeNotes
+      // Finite MML: all channels completed, flush any remaining pendingNotes
       this.flushAllChannels();
       this.allFinished = true;
     } else {
-      // Infinite MML: reset firstInfiniteLoopReached so playback can advance past it,
-      // and emit any non-tied, non-portamento activeNotes from the first loop.
+      // Infinite MML: reset firstInfiniteLoopReached so playback can advance past it.
+      // Do NOT flush pendingNote here because loop ends can tie or portamento across
+      // the loop boundary into the next iteration (e.g. [ERC_] = ERC_ERC_E...)
       for (const [, state] of this.channelStates) {
         state.firstInfiniteLoopReached = false;
-        if (
-          state.activeNote &&
-          !state.activeNote.isTie &&
-          (!state.activeNote.isPortamento || state.activeNote.portamentoTargetNote !== undefined)
-        ) {
-          this.emitPreparedNote(state.activeNote);
-          state.lastEmittedNote = state.activeNote;
-          state.activeNote = null;
-        }
       }
     }
 
@@ -254,15 +244,11 @@ export class MMLScheduler {
 
       if (minTick > targetTick) {
         // minTick has passed targetTick.
-        // Check if any channel still has an unresolved tie or portamento target.
+        // Check if any channel still has an unresolved pending tie or portamento target.
         let hasPending = false;
         for (const [, state] of this.channelStates) {
           if (state.isFinished) continue;
-          if (
-            state.activeNote &&
-            (state.activeNote.isTie ||
-              (state.activeNote.isPortamento && state.activeNote.portamentoTargetNote === undefined))
-          ) {
+          if (state.pendingNote) {
             hasPending = true;
             break;
           }
@@ -369,61 +355,75 @@ export class MMLScheduler {
       this._visualizerNotes.push(vNote);
       this.visualizerNotesByChannel.get(event.channel)?.push(vNote);
 
-      // 2. Tie & Portamento resolution pipeline
-      const prev = state.activeNote;
-      if (!prev) {
-        let isSlur = false;
-        if (
-          state.lastEmittedNote?.isTie &&
-          state.lastEmittedNote.tick + state.lastEmittedNote.duration === event.tick &&
-          state.lastEmittedNote.noteNumber !== event.noteNumber
-        ) {
-          isSlur = true;
-        }
-        state.activeNote = { ...event, isSlur };
-      } else {
-        // Resolve portamento target for previous note
-        if (prev.isPortamento && prev.portamentoTargetNote === undefined) {
-          prev.portamentoTargetNote = event.noteNumber;
+      // 2. Tie & Portamento resolution and emission pipeline
+      const curr: NoteEvent & { portamentoTargetNote?: number; isSlur?: boolean } = {
+        ...event,
+      };
+      const pending = state.pendingNote;
+
+      if (pending) {
+        // Resolve portamento target for pending note
+        if (pending.isPortamento && pending.portamentoTargetNote === undefined) {
+          pending.portamentoTargetNote = curr.noteNumber;
         }
 
         // Merge contiguous same-pitch tie
         if (
-          prev.isTie &&
-          prev.noteNumber === event.noteNumber &&
-          prev.tick + prev.duration === event.tick
+          pending.isTie &&
+          pending.noteNumber === curr.noteNumber &&
+          pending.tick + pending.duration === curr.tick
         ) {
-          prev.duration += event.duration;
-          prev.gateDuration += event.gateDuration;
-          prev.isTie = event.isTie;
-          if (event.isPortamento) {
-            prev.isPortamento = true;
-            prev.portamentoTargetNote = undefined;
+          pending.duration += curr.duration;
+          pending.gateDuration += curr.gateDuration;
+          pending.isTie = curr.isTie;
+          if (curr.isPortamento) {
+            pending.isPortamento = true;
+            pending.portamentoTargetNote = undefined;
           }
-        } else {
-          // Different note: emit previous note
-          this.emitPreparedNote(prev);
-          state.lastEmittedNote = prev;
 
-          let isSlur = false;
+          // If pending note still needs resolution (further tie or unresolved portamento), keep pending
           if (
-            prev.isTie &&
-            prev.tick + prev.duration === event.tick &&
-            prev.noteNumber !== event.noteNumber
+            pending.isTie ||
+            (pending.isPortamento && pending.portamentoTargetNote === undefined)
           ) {
-            isSlur = true;
+            return;
           }
-          state.activeNote = { ...event, isSlur };
+
+          // Fully resolved: emit merged note and clear pending
+          this.emitPreparedNote(pending);
+          state.pendingNote = null;
+          return;
         }
+
+        // Different note: emit pending note
+        this.emitPreparedNote(pending);
+        state.pendingNote = null;
+
+        // Slur check: pending was a tie with contiguous ticks but different pitch
+        if (
+          pending.isTie &&
+          pending.tick + pending.duration === curr.tick &&
+          pending.noteNumber !== curr.noteNumber
+        ) {
+          curr.isSlur = true;
+        }
+      }
+
+      // Process curr:
+      // If curr needs lookahead for tie or portamento target, hold it in pendingNote.
+      // Otherwise, emit immediately without waiting for next note!
+      if (curr.isTie || curr.isPortamento) {
+        state.pendingNote = curr;
+      } else {
+        this.emitPreparedNote(curr);
       }
     }
   }
 
   private flushChannel(state: ChannelState): void {
-    if (state.activeNote) {
-      this.emitPreparedNote(state.activeNote);
-      state.lastEmittedNote = state.activeNote;
-      state.activeNote = null;
+    if (state.pendingNote) {
+      this.emitPreparedNote(state.pendingNote);
+      state.pendingNote = null;
     }
   }
 
