@@ -15,11 +15,7 @@ import { MMLScheduler } from "../audio/scheduler/MMLScheduler.js";
 import { useInstrumentContext } from "./InstrumentContext.js";
 import { NoteVisualizer } from "./NoteVisualizer.js";
 import clsx from "clsx";
-
-interface AudioPlayerProps {
-  /** MML source text */
-  mml: string;
-}
+import { usePlaylist } from "./Playlist.js";
 
 type PlaybackState = null | "playing" | "paused";
 
@@ -31,9 +27,11 @@ const formatTime = (sec: number) => {
   return `${m}:${s.toString().padStart(2, "0")}`;
 };
 
-export function AudioPlayer({ mml }: AudioPlayerProps) {
+export function AudioPlayer() {
   const { registry } = useInstrumentContext();
-
+  const { currentFile } = usePlaylist();
+  const { content: mml } = currentFile;
+  
   const [playbackState, setPlaybackState] = useState<PlaybackState>(null);
   const [currentTime, setCurrentTime] = useState(0);
   const [totalTime, setTotalTime] = useState(0);

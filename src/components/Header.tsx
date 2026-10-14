@@ -1,15 +1,15 @@
 import clsx from "clsx";
 import type { ReactNode } from "react";
+import { usePlaylist } from "./Playlist";
 
 interface Props {
   children: ReactNode;
-  loadFile: (file: File) => void;
 }
 
 export function WithHeaderAndSidebar(props: Props) {
   return (
     <>
-      <header className="navbar bg-base-100">
+      <header className="navbar bg-base-100 border-b-2 border-base-border">
         <div className="navbar-start">
           <label
             htmlFor="SidebarToggle"
@@ -51,8 +51,13 @@ export function WithHeaderAndSidebar(props: Props) {
             aria-label="close sidebar"
             className="drawer-overlay"
           />
-          <div className="bg-base-200 h-full w-80 p-2 sm:p-4 flex flex-col space-y-2">
-            <SidebarContent {...props} />
+          <div
+            className={clsx(
+              "bg-base-200 h-full w-80 border-r-2 border-base-border max-lg:shadow-big",
+              "p-2 sm:p-4 flex flex-col space-y-2",
+            )}
+          >
+            <SidebarContent />
           </div>
         </div>
       </div>
@@ -60,7 +65,10 @@ export function WithHeaderAndSidebar(props: Props) {
   );
 }
 
-function SidebarContent(props: Props) {
+function SidebarContent() {
+  const { files, currentIndex, setCurrentIndex, loadFile, newFile } =
+    usePlaylist();
+
   return (
     <>
       <h3 className="font-semibold text-lg">MMLを選択</h3>
@@ -71,23 +79,23 @@ function SidebarContent(props: Props) {
         )}
       >
         <ul className="menu w-full h-max p-0">
+          {files.map((f, i) => (
+            <li key={`${i}-${f.name}`}>
+              <button
+                className={clsx(
+                  i === currentIndex && "menu-active",
+                  f.isSample && i !== currentIndex && "text-base-content/70",
+                )}
+                onClick={() => setCurrentIndex(i)}
+              >
+                {f.name.trim() || "無題"}
+              </button>
+            </li>
+          ))}
           <li>
-            <button className="text-base-content/70">サンプル1</button>
-          </li>
-          <li>
-            <button className="text-base-content/70">サンプル2</button>
-          </li>
-          <li>
-            <button className="">hoge</button>
-          </li>
-          <li>
-            <button className="">hoge</button>
-          </li>
-          <li>
-            <button className="menu-active">無題</button>
-          </li>
-          <li>
-            <button className="justify-center">+ 新規作成</button>
+            <button className="justify-center" onClick={() => newFile()}>
+              + 新規作成
+            </button>
           </li>
         </ul>
       </div>
@@ -109,11 +117,14 @@ function SidebarContent(props: Props) {
           className="hidden"
           onChange={(e) => {
             if (e.target.files?.[0]) {
-              props.loadFile(e.target.files[0]);
+              loadFile(e.target.files[0]);
             }
           }}
         />
       </div>
+      <p className="mx-2 text-paragraph text-xs">
+        ファイルをドラッグ&ドロップで読み込むこともできます。
+      </p>
       <div className="divider" />
       <h3 className="font-semibold text-lg">ファイルをエクスポート</h3>
       <div>TODO</div>

@@ -1,10 +1,10 @@
 import { useState, type ReactNode } from "react";
 import { useInstrumentContext } from "../components/InstrumentContext.js";
+import { usePlaylist } from "./Playlist.js";
 
 interface Props {
   className: string;
   children: ReactNode;
-  loadFile: (file: File) => void;
 }
 
 const SF2_EXTENSIONS = [".sf2"];
@@ -18,6 +18,7 @@ function getExtension(name: string): string {
 export function HandleDropFile(props: Props) {
   const [dragging, setDragging] = useState(false);
   const { loadSF2, loadNDS } = useInstrumentContext();
+  const { loadFile } = usePlaylist();
 
   const handleFile = (file: File) => {
     const ext = getExtension(file.name);
@@ -26,7 +27,7 @@ export function HandleDropFile(props: Props) {
     } else if (NDS_EXTENSIONS.includes(ext)) {
       loadNDS(file);
     } else {
-      props.loadFile(file);
+      loadFile(file);
     }
   };
 
@@ -49,6 +50,10 @@ export function HandleDropFile(props: Props) {
             handleFile(e.dataTransfer.files[0]);
           }
         }}
+        onClick={() => {
+          // 何らかの理由でonDragLeaveが反応しなかった場合にクリックで閉じられる
+          setDragging(false)
+        }}
       >
         {props.children}
       </div>
@@ -59,8 +64,9 @@ export function HandleDropFile(props: Props) {
         className="modal-toggle"
       />
       <div className="modal pointer-events-none" role="dialog">
-        <div className="modal-box">
-          ファイルをドラッグ&ドロップで読み込む
+        <div className="modal-box shadow-big flex flex-col items-center gap-2">
+          <div>ファイルをドラッグ&ドロップで読み込む</div>
+          <div className="text-sm">MML ファイル または .sf2 / .sf3 / .nds / .sdat 音源ファイル</div>
         </div>
       </div>
     </>

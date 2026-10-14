@@ -4,13 +4,12 @@ import "ace-builds/src-noconflict/ext-searchbox";
 import "./MmlHighlightRules.js";
 import { useEffect, useRef } from "react";
 import type Ace from "ace-builds";
+import { usePlaylist } from "./Playlist.js";
 
-interface MMLEditorProps {
-  mml: string;
-  onChange: (value: string) => void;
-}
+export const MMLEditor = () => {
+  const { currentFile, updateContent } = usePlaylist();
+  const { content: mml } = currentFile;
 
-export const MMLEditor = ({ mml, onChange }: MMLEditorProps) => {
   const editorRef = useRef<Ace.Editor | null>(null);
 
   useEffect(() => {
@@ -33,7 +32,7 @@ export const MMLEditor = ({ mml, onChange }: MMLEditorProps) => {
             onLoad={(editor) => {
               editorRef.current = editor;
             }}
-            onChange={(v) => onChange(v)}
+            onChange={(v) => updateContent(v)}
             width="full"
             height="100%"
             theme="twilight"

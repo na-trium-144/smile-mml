@@ -44,8 +44,9 @@ accent, info, success, and warning follows SmileBASIC3 color pallet: https://pet
 
 @theme {
   --font-sans: "M+ 1p", "M+ 1c", "M PLUS 1p", sans-serif;
-  --color-base-border: #ffffffc0;
-  --color-paragraph: #ffffffd4;
+  --shadow-big: 0 0 6px 12px #000000;
+  --color-base-border: #c0c0c0;
+  --color-paragraph: #d4d4d4;
   /* sb3のエディタ色設定で使えるのはRGB7段階なので、 00, 2b, 55, 80, aa, d4, ff とする。 */
   --color-sb3-text: #ffffff; /* 7 7 7 */
   --color-sb3-numeric: #ff80d4; /* 7 4 6 */
@@ -116,6 +117,9 @@ accent, info, success, and warning follows SmileBASIC3 color pallet: https://pet
   }
   .modal-box {
     @apply border-2 border-base-border;
+  }
+  .divider {
+    --divider-color: var(--color-base-border);
   }
 
   .about {

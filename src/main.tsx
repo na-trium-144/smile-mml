@@ -5,11 +5,14 @@ import '@fontsource/league-mono';
 import './index.css'
 import App from './App.tsx'
 import { InstrumentProvider } from './components/InstrumentContext.tsx'
+import { PlaylistProvider } from './components/Playlist.tsx';
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <InstrumentProvider>
-      <App />
+      <PlaylistProvider>
+        <App />
+      </PlaylistProvider>
     </InstrumentProvider>
   </StrictMode>,
 )

@@ -230,6 +230,9 @@ export function InstrumentSelect() {
                 </div>
               )}
             </div>
+            <p className="mb-2 text-paragraph text-xs">
+              ファイルをドラッグ&ドロップで読み込むこともできます。
+            </p>
             <div className="text-sm">
               <span className="text-sb3-label">@144</span> 〜{" "}
               <span className="text-sb3-label">@151</span> には{" "}
@@ -277,6 +280,9 @@ export function InstrumentSelect() {
                 </select>
               )}
             </div>
+            <p className="mb-2 text-paragraph text-xs">
+              ファイルをドラッグ&ドロップで読み込むこともできます。
+            </p>
           </>
         )}
 
