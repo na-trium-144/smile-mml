@@ -130,4 +130,18 @@ accent, info, success, and warning follows SmileBASIC3 color pallet: https://pet
       @apply ml-2 my-1 text-paragraph;
     }
   }
+  .mml-spec {
+    > h4 {
+      @apply mb-1;
+    }
+    > ul {
+      @apply mb-2 text-sm;
+    }
+    ul {
+      @apply list-disc list-outside ml-4;
+    }
+    var {
+      @apply italic opacity-60;
+    }
+  }
 }
