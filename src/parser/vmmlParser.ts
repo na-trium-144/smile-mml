@@ -642,20 +642,21 @@ export class MMLChannelParser {
       }
 
       // Divisor of 192 alignment: WHILE 192 MOD V != 0: INC V: WEND
+      // ここはVMML-LIBのコードが間違っている。 C100はC192にするが、C5はC6にするのではなく192分音符floor(192/5)個分の長さにする。192分音符の分解能へのアライメントは Math.floor(192 / v) として後で行われているので、ここでは行わない
       if ((c >= 'A' && c <= 'G') || c === 'R' || c === '|' || c === 'L') {
         if (v <= 0) v = 4;
         if (v > 192) v = 192;
-        while (192 % v !== 0) {
-          v++;
-        }
+        // while (192 % v !== 0) {
+        //   v++;
+        // }
         if (vStr !== '') vStr = String(v);
       }
       if (c === 'N') {
         if (v2 <= 0) v2 = 4;
         if (v2 >= 192) v = 192;
-        while (192 % v2 !== 0) {
-          v2++;
-        }
+        // while (192 % v2 !== 0) {
+        //   v2++;
+        // }
         if (v2Str !== '') v2Str = String(v2);
       }
 
