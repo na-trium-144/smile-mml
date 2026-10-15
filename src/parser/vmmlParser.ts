@@ -1,7 +1,10 @@
 /**
- * VMML-LIB Faithful MML Parser Implementation in TypeScript
+ * MML Parser Implementation in TypeScript
  * Faithfully ports DEF LD PS parsing logic from VMML-LIB (Visual MML ver1.1.2 by Na)
  * without using regex rewriting.
+ *
+ * エラーハンドリングは原則行わず、VMML-LIBの仕様に合わせる。
+ * ただし無限ループでフリーズしてしまうケースのみ、MML終了イベントを返して中断するようなパッチを加えている。
  */
 
 import { extractMacro } from './exmml.js';
@@ -42,13 +45,13 @@ export class MMLChannelParser {
   // Loop stacks: CHLPP$, CHLPC$
   public loopPosStack: number[] = [];
   public loopCountStack: number[] = [];
+  public loopTickStack: number[] = [];
+
+  macroExpansionStack: string[] = [];
 
   // Chord buffer: CHW$, CHW2$
   public inChord: boolean = false;
   public chordNotes: ChordNoteItem[] = [];
-
-  // Ticks per whole note: default 192 (quarter note = 48 ticks)
-  public readonly spd: number;
 
   // Stop flag when infinite loop detected
   public infiniteLoopCount: number = 0;
@@ -57,13 +60,11 @@ export class MMLChannelParser {
     channelIndex: number,
     channelText: string,
     fullMML: string,
-    initialKeyShift: number = 0,
-    spd: number = 192
+    initialKeyShift: number = 0
   ) {
     this.channelIndex = channelIndex;
     this.mmlText = channelText + ' ';
     this.fullMML = fullMML;
-    this.spd = spd;
 
     const defaultEnvelope: EnvelopeParams = {
       enabled: false,
@@ -299,8 +300,26 @@ export class MMLChannelParser {
         // It's a macro reference: {TAG}
         const tag = this.mmlText.slice(s + 1, e - 1);
         const repl = extractMacro(this.fullMML, tag);
-        this.mmlText = this.mmlText.slice(0, s) + repl + this.mmlText.slice(e);
+        // 末尾に展開終了場所のマーカーを残す & タグ名をスタックに残す (オリジナルのVMML-LIBにはなかった処理)
+        this.mmlText = this.mmlText.slice(0, s) + repl + "▲" + this.mmlText.slice(e);
+        if (this.macroExpansionStack.includes(tag)) {
+          this.isFinished = true;
+          yield {
+            type: 'end',
+            channel: this.channelIndex,
+            tick: this.currentTick,
+            error: `マクロ {${tag}} が自己参照しました`,
+          };
+          return;
+        }
+        this.macroExpansionStack.push(tag);
         this.pos = s;
+        continue;
+      }
+      if (c === "▲") {
+        this.macroExpansionStack.pop();
+        this.mmlText = this.mmlText.slice(0, this.pos-1) + this.mmlText.slice(this.pos);
+        this.pos = this.pos - 1;
         continue;
       }
 
@@ -308,6 +327,7 @@ export class MMLChannelParser {
       if (c === '[') {
         this.loopPosStack.push(this.pos);
         this.loopCountStack.push(0);
+        this.loopTickStack.push(this.currentTick);
 
         // Backup current parameter state into MML string (matching VMML-LIB line 693-701)
         if (this.mmlText[this.pos] !== '☆') {
@@ -327,8 +347,22 @@ export class MMLChannelParser {
         const { num: targetLoopCount } = this.gtv();
         const currentCount = (this.loopCountStack.pop() ?? 0) + 1;
         const loopStartPos = this.loopPosStack[this.loopPosStack.length - 1] ?? 0;
+        const loopStartTick = this.loopTickStack[this.loopTickStack.length - 1] ?? 0;
 
-        if (targetLoopCount === 0 || currentCount < targetLoopCount) {
+        if (loopStartTick === this.currentTick && targetLoopCount === 0) {
+          // 0-tick infinite loop はエラー
+          this.isFinished = true;
+          yield {
+            type: 'end',
+            channel: this.channelIndex,
+            tick: this.currentTick,
+            error: `音符のない無限ループがあります`,
+          };
+          return;
+        }
+
+        // SmileBASICでは有限ループの回数の上限は255だが、SmileMMLではシンタックスハイライトがわかりやすい999にしている
+        if (targetLoopCount === 0 || currentCount < Math.min(999, targetLoopCount)) {
           // Continue looping (or infinite loop)
           this.loopCountStack.push(currentCount);
           this.pos = loopStartPos;
@@ -350,6 +384,7 @@ export class MMLChannelParser {
 
         // Loop finished: pop start pos
         this.loopPosStack.pop();
+        this.loopTickStack.pop();
         continue;
       }
 
@@ -609,6 +644,7 @@ export class MMLChannelParser {
       // Divisor of 192 alignment: WHILE 192 MOD V != 0: INC V: WEND
       if ((c >= 'A' && c <= 'G') || c === 'R' || c === '|' || c === 'L') {
         if (v <= 0) v = 4;
+        if (v > 192) v = 192;
         while (192 % v !== 0) {
           v++;
         }
@@ -616,6 +652,7 @@ export class MMLChannelParser {
       }
       if (c === 'N') {
         if (v2 <= 0) v2 = 4;
+        if (v2 >= 192) v = 192;
         while (192 % v2 !== 0) {
           v2++;
         }
@@ -646,12 +683,12 @@ export class MMLChannelParser {
         // Chord end: emit all notes in chordNotes with duration calculated from this |
         let noteDuration = 0;
         if (!trailingPortamento) {
-          noteDuration = Math.round(this.spd / v);
+          noteDuration = Math.floor(192 / v);
           let remVd = totalDots;
           let tempV = v;
           while (remVd > 0) {
             tempV *= 2;
-            noteDuration += Math.round(this.spd / tempV);
+            noteDuration += Math.floor(192 / tempV);
             remVd--;
           }
         }
@@ -710,12 +747,12 @@ export class MMLChannelParser {
       if (c >= 'A' && c <= 'G') {
         let noteDuration = 0;
         if (!trailingPortamento) {
-          noteDuration = Math.round(this.spd / v);
+          noteDuration = Math.floor(192 / v);
           let remVd = totalDots;
           let tempV = v;
           while (remVd > 0) {
             tempV *= 2;
-            noteDuration += Math.round(this.spd / tempV);
+            noteDuration += Math.floor(192 / tempV);
             remVd--;
           }
         }
@@ -759,12 +796,12 @@ export class MMLChannelParser {
 
       // Rest (R)
       if (c === 'R') {
-        let restDuration = Math.round(this.spd / v);
+        let restDuration = Math.floor(192 / v);
         let remVd = totalDots;
         let tempV = v;
         while (remVd > 0) {
           tempV *= 2;
-          restDuration += Math.round(this.spd / tempV);
+          restDuration += Math.floor(192 / tempV);
           remVd--;
         }
 
@@ -782,12 +819,12 @@ export class MMLChannelParser {
       // Direct Note Number N<note>[,<len>]
       if (c === 'N') {
         // trailingPortamento is not considered here in original VMML-LIB
-        let noteDuration = Math.round(this.spd / v2);
+        let noteDuration = Math.floor(192 / v2);
         let remVd = totalDots;
         let tempV = v2;
         while (remVd > 0) {
           tempV *= 2;
-          noteDuration += Math.round(this.spd / tempV);
+          noteDuration += Math.floor(192 / tempV);
           remVd--;
         }
 

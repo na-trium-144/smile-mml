@@ -105,6 +105,7 @@ export interface LoopEvent extends BaseMMLEvent {
 
 export interface ChannelEndEvent extends BaseMMLEvent {
   type: 'end';
+  error?: string;
 }
 
 export type MMLEvent =

@@ -95,8 +95,7 @@ export class MMLScheduler {
           ch,
           channels[ch],
           mml,
-          initialKeyShift,
-          ticksPerWholeNote,
+          initialKeyShift
         );
         const generator = parser.nextEvent();
         const nextResult = generator.next();
@@ -320,6 +319,9 @@ export class MMLScheduler {
     if (event.type === "end") {
       this.flushChannel(state);
       state.isFinished = true;
+      if (event.error) {
+        this.onError(event.error);
+      }
       return;
     }
 
