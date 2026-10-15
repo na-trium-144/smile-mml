@@ -8,16 +8,19 @@
 // https://github.com/marmooo/midy/blob/a20d82520626b40dbaab8fb82c94747535ea9410/src/midy-GM2.ts#L267
 // を参考にしました
 
-import { parse, SoundFont } from '@marmooo/soundfont';
+import { AudioData, parse, SoundFont } from '@marmooo/soundfont';
 import type { InstrumentBank } from './InstrumentBank.js';
 import type { VoiceData, ADSRParams } from '../types.js';
 import { timecentToSeconds, centibelsToGain } from '../utils/conversion.js';
+import { OggVorbisDecoder } from '@wasm-audio-decoders/ogg-vorbis';
 
 export class SF2InstrumentBank implements InstrumentBank {
   public readonly name: string;
   private sf: SoundFont | null = null;
   // Cache decoded PCM Float32Array per sample ID to avoid redundant decoding
   private pcmCache: Map<number, Float32Array> = new Map();
+
+  static oggDecoder = new OggVorbisDecoder();
 
   constructor(name: string = 'SoundFont2') {
     this.name = name;
@@ -39,7 +42,7 @@ export class SF2InstrumentBank implements InstrumentBank {
     return program >= 0 && program <= 129;
   }
 
-  public getVoice(program: number, noteNumber: number, velocity: number): VoiceData | null {
+  public async getVoice(program: number, noteNumber: number, velocity: number): Promise<VoiceData | null> {
     if (!this.sf) return null;
 
     const { bank, preset } = this.resolveBankPreset(program);
@@ -120,11 +123,7 @@ const header = voice.sampleHeader;
     const attenuation = initialAttenuation !== undefined ? centibelsToGain(initialAttenuation * 0.4) : 1.0;
 
     const sampleId = gen.get("sampleID") ?? 0;
-    let pcm = this.pcmCache.get(sampleId);
-    if (!pcm) {
-      pcm = voice.sample.decodePCM(voice.sample.data);
-      this.pcmCache.set(sampleId, pcm);
-    }
+    const pcm = await this.getOrDecodePCM(sampleId, voice.sample);
 
     return {
       kind: 'sample',
@@ -139,6 +138,28 @@ const header = voice.sampleHeader;
       defaultPan,
       attenuation,
     };
+  }
+
+  private async getOrDecodePCM(sampleId: number, sample: AudioData): Promise<Float32Array> {
+    let pcm = this.pcmCache.get(sampleId);
+    if (pcm) return pcm;
+
+    if (sample.type === 'compressed') {
+      await SF2InstrumentBank.oggDecoder.ready;
+
+      const audioData = sample.data instanceof Uint8Array ? sample.data : new Uint8Array(sample.data);
+      const result = await SF2InstrumentBank.oggDecoder.decodeFile(audioData);
+
+      if (0 < result.errors.length) {
+        throw new Error(result.errors.join(", "));
+      }
+      pcm = result.channelData[0];
+    } else {
+      pcm = sample.decodePCM(sample.data);
+    }
+
+    this.pcmCache.set(sampleId, pcm);
+    return pcm;
   }
 
   private resolveBankPreset(program: number): { bank: number; preset: number } {

@@ -610,7 +610,7 @@ export class MMLScheduler {
   }
 
   private startSchedulerLoop(): void {
-    const tickLoop = () => {
+    const tickLoop = async () => {
       if (!this.isPlaying) return;
 
       const currentAudioTime = this.synth.currentTime;
@@ -636,11 +636,12 @@ export class MMLScheduler {
         const targetAudioTime = this.playbackStartAudioTime + eventSec;
 
         if (ev.type === "note") {
-          try {
-            this.scheduleNote(ev.event, targetAudioTime);
-          } catch (e) {
+          // TODO: 並列化
+          // awaitを外せば並列化できるが、SF2InstrumentBankのOggVorbisDecoderの出力が壊れた。要検証
+          // そもそも並列化する必要があるかどうかも要検証
+          await this.scheduleNote(ev.event, targetAudioTime).catch((e) => {
             this.onError(e);
-          }
+          })
         }
 
         this.nextEventIndex++;
@@ -667,7 +668,7 @@ export class MMLScheduler {
     window.setTimeout(tickLoop, 0);
   }
 
-  private scheduleNote(note: PreparedNote, audioTime: number): void {
+  private async scheduleNote(note: PreparedNote, audioTime: number): Promise<void> {
     const durationSec = this.tempoMap.durationTicksToSeconds(
       note.tick,
       note.duration,
@@ -677,7 +678,7 @@ export class MMLScheduler {
       note.gateDuration,
     );
 
-    this.synth.playNote(
+    await this.synth.playNote(
       note,
       Math.max(this.synth.currentTime, audioTime),
       durationSec,

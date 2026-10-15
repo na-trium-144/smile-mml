@@ -63,13 +63,13 @@ export class InstrumentRegistry {
    * Searches banks in reverse order of registration (highest precedence first).
    * If not found, provides an emergency fallback synth voice for rapid preview.
    */
-  public getVoice(program: number, noteNumber: number, velocity: number): VoiceData {
+  public async getVoice(program: number, noteNumber: number, velocity: number): Promise<VoiceData> {
     // 1. Search registered banks (NDS > SF2 > PSG)
     for (let i = this.banks.length - 1; i >= 0; i--) {
       const bank = this.banks[i];
       console.log(bank, "has program", program, bank.hasProgram(program))
       if (bank.hasProgram(program)) {
-        const voice = bank.getVoice(program, noteNumber, velocity);
+        const voice = await bank.getVoice(program, noteNumber, velocity);
         // console.log(voice)
         // TODO: should catch Error instead of checking null, for easier debugging of fallback reason
         if (voice) {

@@ -68,13 +68,13 @@ export class SynthEngine {
   /**
    * Play a prepared note event at the scheduled time
    */
-  public playNote(
+  public async playNote(
     note: PreparedNote,
     startTime: number,
     durationSec: number,
     gateDurationSec: number
-  ): void {
-    const voiceData = this.registry.getVoice(note.program, note.noteNumber, note.velocity);
+  ): Promise<void> {
+    const voiceData = await this.registry.getVoice(note.program, note.noteNumber, note.velocity);
     if (!voiceData) return;
 
     // 1. Resolve envelope (SmileBASIC @E override or bank default)

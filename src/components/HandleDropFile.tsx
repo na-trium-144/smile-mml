@@ -7,7 +7,7 @@ interface Props {
   children: ReactNode;
 }
 
-const SF2_EXTENSIONS = [".sf2"];
+const SF2_EXTENSIONS = [".sf2", ".sf3"];
 const NDS_EXTENSIONS = [".nds", ".sdat"];
 
 function getExtension(name: string): string {

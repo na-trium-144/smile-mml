@@ -216,7 +216,7 @@ export function InstrumentSelect() {
                 type="file"
                 id="SF2InstrumentInput"
                 className="hidden"
-                accept=".sf2,.SF2"
+                accept=".sf2,.sf3"
                 disabled={loadingAsset !== null}
                 onChange={(e) => {
                   if (e.target.files?.[0]) {
@@ -253,7 +253,7 @@ export function InstrumentSelect() {
               <input
                 type="file"
                 className="hidden"
-                accept=".nds,.NDS,.sdat,.SDAT"
+                accept=".nds,.sdat"
                 disabled={loadingAsset !== null}
                 onChange={(e) => {
                   if (e.target.files?.[0]) {

@@ -18,7 +18,7 @@ export interface InstrumentBank {
    * Get voice data for the specified program, note, and velocity.
    * Resolves key splits, velocity layers, sample looping, and default ADSR.
    */
-  getVoice(program: number, noteNumber: number, velocity: number): VoiceData | null;
+  getVoice(program: number, noteNumber: number, velocity: number): Promise<VoiceData | null> | VoiceData | null;
 
   /**
    * Optional cleanup
