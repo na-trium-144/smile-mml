@@ -12,20 +12,25 @@ import {
   useCallback,
   type ReactNode,
   type FC,
+  useEffect,
 } from "react";
 import { InstrumentRegistry } from "../audio/banks/InstrumentRegistry.js";
 import { SF2InstrumentBank } from "../audio/banks/SF2InstrumentBank.js";
 import { NDSInstrumentBank } from "../audio/banks/NDSInstrumentBank.js";
+import clsx from "clsx";
+
+const presetSF2Names = ["GeneralUser GS", "FluidR3 GM"] as const;
 
 interface InstrumentContextValue {
   registry: InstrumentRegistry;
   sf2Name: string | null;
+  sf2IsPreset: boolean;
   ndsName: string | null;
   ndsSdats: string[];
   selectedNdsSdat: string;
   loadingAsset: string | null;
   loadError: string | null;
-  loadSF2: (file: File) => Promise<void>;
+  loadSF2: (file: File | (typeof presetSF2Names)[number]) => Promise<void>;
   loadNDS: (file: File) => Promise<void>;
   selectSdat: (path: string) => void;
   bankSelected: "sf2" | "nds";
@@ -69,6 +74,7 @@ export const InstrumentProvider: FC<{ children: ReactNode }> = ({
   const sf2BankRef = useRef<SF2InstrumentBank | null>(null);
   const ndsBankRef = useRef<NDSInstrumentBank | null>(null);
 
+  const [sf2IsPreset, setSf2IsPreset] = useState<boolean>(false);
   const [sf2Name, setSf2Name] = useState<string | null>(null);
   const [ndsName, setNdsName] = useState<string | null>(null);
   const [ndsSdats, setNdsSdats] = useState<string[]>([]);
@@ -76,25 +82,48 @@ export const InstrumentProvider: FC<{ children: ReactNode }> = ({
   const [loadingAsset, setLoadingAsset] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
 
-  const loadSF2 = useCallback(async (file: File) => {
-    setLoadingAsset("SF2");
-    setLoadError(null);
-    setBankSelected("sf2");
-    try {
-      const buffer = await file.arrayBuffer();
-      sf2BankRef.current = new SF2InstrumentBank(file.name);
-      await sf2BankRef.current.load(buffer);
-      registryRef.current.register(sf2BankRef.current);
-      setSf2Name(file.name);
-    } catch (err) {
-      console.error("SF2 load error:", err);
-      setLoadError(
-        `SF2 読み込みエラー: ${err instanceof Error ? err.message : String(err)}`,
-      );
-    } finally {
-      setLoadingAsset(null);
-    }
-  }, []);
+  const generalUserGS = useRef<ArrayBuffer | null>(null);
+  const fluidR3GM = useRef<ArrayBuffer | null>(null);
+
+  const loadSF2 = useCallback(
+    async (file: File | (typeof presetSF2Names)[number]) => {
+      setLoadingAsset("SF2");
+      setLoadError(null);
+      setBankSelected("sf2");
+      try {
+        if (file === "GeneralUser GS") {
+          if (!generalUserGS.current) {
+            throw new Error("generalUserGS.current is null");
+          }
+          sf2BankRef.current = new SF2InstrumentBank("GeneralUser GS");
+          await sf2BankRef.current.load(generalUserGS.current);
+          setSf2IsPreset(true);
+        } else if (file === "FluidR3 GM") {
+          if (!fluidR3GM.current) {
+            throw new Error("fluidR3GM.current is null");
+          }
+          sf2BankRef.current = new SF2InstrumentBank("FluidR3 GM");
+          await sf2BankRef.current.load(fluidR3GM.current);
+          setSf2IsPreset(true);
+        } else {
+          const buffer = await file.arrayBuffer();
+          sf2BankRef.current = new SF2InstrumentBank(file.name);
+          await sf2BankRef.current.load(buffer);
+          setSf2IsPreset(false);
+        }
+        registryRef.current.register(sf2BankRef.current);
+        setSf2Name(sf2BankRef.current.name);
+      } catch (err) {
+        console.error("SF2 load error:", err);
+        setLoadError(
+          `SF2 読み込みエラー: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      } finally {
+        setLoadingAsset(null);
+      }
+    },
+    [],
+  );
 
   const selectSdat = useCallback((path: string) => {
     if (ndsBufferRef.current && path) {
@@ -131,9 +160,32 @@ export const InstrumentProvider: FC<{ children: ReactNode }> = ({
     }
   }, []);
 
+  useEffect(() => {
+    async function decompressIfNecessary(res: Response) {
+      const reader = res.clone().body!.getReader();
+      const { value } = await reader.read();
+      reader.cancel();
+      if (value && value[0] === 0x1f && value[1] === 0x8b) {
+        const ds = new DecompressionStream("gzip");
+        const decompressedStream = (await res.blob()).stream().pipeThrough(ds);
+        return new Response(decompressedStream).arrayBuffer();
+      } else {
+        return res.arrayBuffer();
+      }
+    }
+    fetch("/GeneralUser-GS.sf3.gz").then(async (res) => {
+      generalUserGS.current = await decompressIfNecessary(res);
+      loadSF2("GeneralUser GS");
+    });
+    fetch("/FluidR3_GM.sf3.gz").then(async (res) => {
+      fluidR3GM.current = await decompressIfNecessary(res);
+    });
+  }, [loadSF2]);
+
   const value: InstrumentContextValue = {
     registry: registryRef.current,
     sf2Name,
+    sf2IsPreset,
     ndsName,
     ndsSdats,
     selectedNdsSdat,
@@ -156,6 +208,7 @@ export const InstrumentProvider: FC<{ children: ReactNode }> = ({
 export function InstrumentSelect() {
   const {
     sf2Name,
+    sf2IsPreset,
     ndsName,
     ndsSdats,
     selectedNdsSdat,
@@ -170,8 +223,19 @@ export function InstrumentSelect() {
 
   return (
     <details className="collapse collapse-card-like collapse-arrow collapse-card-like-border">
-      <summary className="collapse-title collapse-card-like-title">
+      <summary className="collapse-title collapse-card-like-title flex justify-between items-center">
         <h2>音源設定</h2>
+        {bankSelected === "sf2"
+          ? sf2Name && (
+            <div>
+              <span className="badge badge-info badge-sm">{sf2Name}</span>
+              <span className="mx-1 text-sm">+</span>
+              <span className="badge badge-warning badge-sm">PSG音源</span>
+            </div>
+            )
+          : ndsName && (
+              <div className="badge badge-accent badge-sm">{ndsName}</div>
+            )}
       </summary>
       <div className="collapse-content flex flex-col">
         <div className="tabs tabs-border mb-2 -mt-3">
@@ -204,31 +268,61 @@ export function InstrumentSelect() {
         {/* SF2 */}
         {bankSelected === "sf2" ? (
           <>
-            <div key="sf2" className="flex items-center gap-2 mb-2">
-              <span className="">SoundFont (.sf2 / .sf3)</span>
-              <label
-                htmlFor="SF2InstrumentInput"
-                className="btn btn-info btn-sm"
-              >
-                ファイルを選択...
-              </label>
-              <input
-                type="file"
-                id="SF2InstrumentInput"
-                className="hidden"
-                accept=".sf2,.sf3"
-                disabled={loadingAsset !== null}
+            <div key="sf2" className="flex flex-wrap items-center gap-2 mb-2">
+              <span className="">サウンドフォント (.sf2 / .sf3) を選択</span>
+              <select
+                className="select select-info select-sm w-max"
+                value={sf2IsPreset && sf2Name ? sf2Name : ""}
                 onChange={(e) => {
-                  if (e.target.files?.[0]) {
-                    loadSF2(e.target.files[0]);
+                  if (
+                    (presetSF2Names as Readonly<string[]>).includes(
+                      e.target.value,
+                    )
+                  ) {
+                    loadSF2(e.target.value as (typeof presetSF2Names)[number]);
                   }
                 }}
-              />
-              {sf2Name && (
-                <div className="badge badge-success badge-sm">
-                  ✓ {sf2Name}
-                </div>
-              )}
+              >
+                <option disabled value="">
+                  デフォルト音源から選択...
+                </option>
+                {presetSF2Names.map((name) => (
+                  <option key={name} value={name}>
+                    {name}
+                  </option>
+                ))}
+              </select>
+              <span>または</span>
+              <div className={clsx(!sf2IsPreset && sf2Name && "join")}>
+                <label
+                  htmlFor="SF2InstrumentInput"
+                  className={clsx(
+                    "btn btn-info btn-sm",
+                    !sf2IsPreset && sf2Name && "join-item",
+                  )}
+                >
+                  ファイルを読み込む...
+                </label>
+                <input
+                  type="file"
+                  id="SF2InstrumentInput"
+                  className="hidden"
+                  accept=".sf2,.sf3"
+                  disabled={loadingAsset !== null}
+                  onChange={(e) => {
+                    if (e.target.files?.[0]) {
+                      loadSF2(e.target.files[0]);
+                    }
+                  }}
+                />
+                {!sf2IsPreset && sf2Name && (
+                  <input
+                    className="input input-sm join-item"
+                    value={sf2Name}
+                    readOnly
+                  />
+                )}
+              </div>
             </div>
             <p className="mb-2 text-paragraph text-xs">
               ファイルをドラッグ&ドロップで読み込むこともできます。
@@ -262,9 +356,7 @@ export function InstrumentSelect() {
                 }}
               />
               {ndsName && (
-                <div className="badge badge-success badge-sm">
-                  ✓ {ndsName}
-                </div>
+                <div className="badge badge-success badge-sm">✓ {ndsName}</div>
               )}
               {ndsSdats.length >= 1 && (
                 <select
