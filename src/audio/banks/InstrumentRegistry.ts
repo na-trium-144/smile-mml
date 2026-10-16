@@ -67,15 +67,12 @@ export class InstrumentRegistry {
     // 1. Search registered banks (NDS > SF2 > PSG)
     for (let i = this.banks.length - 1; i >= 0; i--) {
       const bank = this.banks[i];
-      console.log(bank, "has program", program, bank.hasProgram(program))
-      if (bank.hasProgram(program)) {
         const voice = await bank.getVoice(program, noteNumber, velocity);
         // console.log(voice)
         // TODO: should catch Error instead of checking null, for easier debugging of fallback reason
         if (voice) {
           return voice;
         }
-      }
     }
 
     // 2. If program is @144-@151, always use PSG bank
