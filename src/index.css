@@ -121,6 +121,9 @@ accent, info, success, and warning follows SmileBASIC3 color pallet: https://pet
   .divider {
     --divider-color: var(--color-base-border);
   }
+  .select::picker(select) {
+    @apply border-2 border-base-border mx-0 my-5 shadow-big shadow-base-200;
+  }
 
   .about {
     > h2 {
