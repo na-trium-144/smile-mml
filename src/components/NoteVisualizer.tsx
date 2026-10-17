@@ -16,21 +16,8 @@ import {
   useMemo,
   useState,
 } from "react";
+import type { PostProcessedNote } from "../audio/types";
 
-export interface ChannelParams {
-  program: number;
-  velocity: number;
-  volume: number;
-  pan: number;
-}
-/** Pre-computed note data for the visualizer */
-export interface VisualizerNote extends ChannelParams {
-  channel: number;
-  noteStr: string; // e.g. "C#4"
-  octave: number; // extracted octave number
-  startTick: number; // start time in ticks
-  endTick: number; // end time in ticks (start + duration)
-}
 
 /**
  * Returns a CSS color string for the given octave.
@@ -71,8 +58,6 @@ function octaveColor(octave: number): string {
 }
 
 export interface NoteVisualizerProps {
-  /** Visualizer data (pre-built from events) */
-  notes?: VisualizerNote[];
   /** Active channel indices */
   channels: number[];
   /** Function that returns current playback time in ticks */
@@ -80,7 +65,7 @@ export interface NoteVisualizerProps {
   /** Whether playback is currently active */
   isPlaying: boolean;
   /** Optional function to get notes for a channel directly from scheduler */
-  getNotesForChannel?: (channel: number) => VisualizerNote[];
+  getNotesForChannel: (channel: number) => PostProcessedNote[];
 }
 
 const CHANNEL_HEIGHT = 20;
@@ -90,7 +75,6 @@ const PIXELS_PER_TICK = 4; // horizontal scale
 const FONT_SIZE = 16;
 
 export const NoteVisualizer: FC<NoteVisualizerProps> = ({
-  notes = [],
   channels,
   getCurrentTick,
   isPlaying,
@@ -101,27 +85,6 @@ export const NoteVisualizer: FC<NoteVisualizerProps> = ({
   const canvasRectRef2 = useRef<HTMLDivElement>(null);
   const canvasRef2 = useRef<HTMLCanvasElement>(null);
   const rafRef = useRef<number>(0);
-
-  // Index notes by channel for faster lookup (when getNotesForChannel is not provided)
-  const notesByChannelRef = useRef<Map<number, VisualizerNote[]>>(new Map());
-
-  useEffect(() => {
-    if (getNotesForChannel) return;
-    const map = new Map<number, VisualizerNote[]>();
-    for (const ch of channels) {
-      map.set(ch, []);
-    }
-    for (const note of notes) {
-      let list = map.get(note.channel);
-      if (!list) {
-        list = [];
-        map.set(note.channel, list);
-      }
-      list.push(note);
-    }
-    // Each channel's notes are already sorted by startSec
-    notesByChannelRef.current = map;
-  }, [notes, channels, getNotesForChannel]);
 
   const colorBase100 = useMemo(
     () =>
@@ -145,7 +108,7 @@ export const NoteVisualizer: FC<NoteVisualizerProps> = ({
     [],
   );
 
-  const soundingNotes = useRef<(VisualizerNote | undefined)[]>([]);
+  const soundingNotes = useRef<(PostProcessedNote | undefined)[]>([]);
   const [currentPrograms, setCurrentPrograms] = useState<
     (number | undefined)[]
   >([]);
@@ -204,13 +167,9 @@ export const NoteVisualizer: FC<NoteVisualizerProps> = ({
     ctx.textBaseline = "middle";
 
     // For each channel, draw visible notes
-    const notesByChannel = notesByChannelRef.current;
-
     for (let ci = 0; ci < channels.length; ci++) {
       const chIdx = channels[ci];
-      const chNotes = getNotesForChannel
-        ? getNotesForChannel(chIdx)
-        : notesByChannel.get(chIdx);
+      const chNotes = getNotesForChannel(chIdx);
       if (!chNotes || chNotes.length === 0) continue;
 
       const yBase = ci * CHANNEL_HEIGHT;
@@ -225,7 +184,7 @@ export const NoteVisualizer: FC<NoteVisualizerProps> = ({
       while (lo < hi) {
         const mid = (lo + hi) >> 1;
         // Notes end at durationEndSec; if durationEndSec < viewStartSec, skip
-        if (chNotes[mid].endTick < viewStartTick) {
+        if (chNotes[mid].tick + chNotes[mid].duration < viewStartTick) {
           lo = mid + 1;
         } else {
           hi = mid;
@@ -234,19 +193,19 @@ export const NoteVisualizer: FC<NoteVisualizerProps> = ({
 
       for (let ni = lo; ni < chNotes.length; ni++) {
         const note = chNotes[ni];
-        if (note.startTick > viewEndTick) break; // past right edge
+        if (note.tick > viewEndTick) break; // past right edge
 
-        const x = halfWidth + (note.startTick - currentTick) * PIXELS_PER_TICK;
+        const x = halfWidth + (note.tick - currentTick) * PIXELS_PER_TICK;
 
         // Check if note is currently sounding (between start and gate end)
         const isSounding =
-          currentTick >= note.startTick && currentTick < note.endTick;
+          currentTick >= note.tick && currentTick < note.tick + note.duration;
 
         if (isSounding) {
           // Draw green background for the note's sounding range
           const bgX =
-            halfWidth + (note.startTick - currentTick) * PIXELS_PER_TICK;
-          const bgW = (note.endTick - note.startTick) * PIXELS_PER_TICK;
+            halfWidth + (note.tick - currentTick) * PIXELS_PER_TICK;
+          const bgW = note.duration * PIXELS_PER_TICK;
           ctx.fillStyle = colorPrimary;
           ctx.beginPath();
           ctx.roundRect(bgX, yBase, bgW, CHANNEL_HEIGHT, SOUNDING_RADIUS);
@@ -256,14 +215,18 @@ export const NoteVisualizer: FC<NoteVisualizerProps> = ({
         }
 
         // Draw note name
-        ctx.fillStyle = octaveColor(note.octave);
-        if (note.startTick === note.endTick) {
-          // 長さのないポルタメントの場合だけ、直前の音符と重ねて右寄せにする
-          ctx.textAlign = "right";
-          ctx.fillText(note.noteStr, x - PADDING_X, yCenter);
-        } else {
+        for(const seg of note.segments){
+          const segmentX = x + seg.tickOffset * PIXELS_PER_TICK;
+          ctx.fillStyle = octaveColor(seg.octave);
           ctx.textAlign = "left";
-          ctx.fillText(note.noteStr, x + PADDING_X, yCenter);
+          ctx.fillText(seg.noteStr, segmentX + PADDING_X, yCenter);
+        }
+        if(note.segments.at(-1)?.portamentoTargetNoteStr){
+          // 長さのないポルタメントの場合だけ、直前の音符と重ねて右寄せにする
+          const endX = x + note.duration * PIXELS_PER_TICK;
+          ctx.fillStyle = octaveColor(note.segments.at(-1)!.portamentoTargetOctave!);
+          ctx.textAlign = "right";
+          ctx.fillText(note.segments.at(-1)!.portamentoTargetNoteStr!, endX - PADDING_X, yCenter);
         }
       }
     }
@@ -391,7 +354,7 @@ export const NoteVisualizer: FC<NoteVisualizerProps> = ({
   // Redraw when notes/channels change (even while paused)
   useEffect(() => {
     draw();
-  }, [notes, channels, draw]);
+  }, [channels, draw]);
 
   const canvasHeight = channels.length * CHANNEL_HEIGHT;
 

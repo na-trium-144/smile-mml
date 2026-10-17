@@ -65,7 +65,7 @@ export function AudioPlayer() {
   );
 
   const getNotesForChannel = useCallback(
-    (ch: number) => schedulerRef.current?.getChannelVisualizerNotes(ch) ?? [],
+    (ch: number) => schedulerRef.current?.notesByChannel.get(ch) ?? [],
     [],
   );
 
@@ -109,7 +109,7 @@ export function AudioPlayer() {
     };
 
     setActiveChannels(scheduler.channels);
-    setTotalTime(scheduler.duration);
+    setTotalTime(scheduler.totalDurationSeconds);
     return scheduler;
   }, [getSynth, mml, currentBanks]);
 

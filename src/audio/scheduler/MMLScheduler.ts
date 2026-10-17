@@ -6,7 +6,7 @@
  */
 
 import type { SynthEngine } from "../synth/SynthEngine.js";
-import type { PreparedEvent, PreparedNote, NoteSegment, VoiceData } from "../types.js";
+import type { PostProcessedEvent, PostProcessedNote, NoteSegment, VoiceData } from "../types.js";
 import type { MMLEvent, NoteEvent } from "../../parser/types.js";
 import {
   MMLChannelParser,
@@ -15,7 +15,6 @@ import {
 } from "../../parser/vmmlParser.js";
 import { sbDetuneToCents } from "../utils/conversion.js";
 import { TempoMap } from "./TempoMap.js";
-import type { VisualizerNote } from "../../components/NoteVisualizer.js";
 import type { InstrumentBank } from "../banks/InstrumentBank.js";
 
 interface PendingCompound {
@@ -48,20 +47,19 @@ export class MMLScheduler {
   public readonly channels: number[] = []; // Active channel list (0-15)
 
   // Prepared playback events (for Synth)
-  private events: PreparedEvent[] = [];
+  private events: PostProcessedEvent[] = [];
   private eventsNeedSort: boolean = false;
   private nextEventIndex: number = 0;
 
   // Visualizer data (for NoteVisualizer)
-  private _visualizerNotes: VisualizerNote[] = [];
-  private visualizerNotesByChannel: Map<number, VisualizerNote[]> = new Map();
+  notesByChannel: Map<number, PostProcessedNote[]> = new Map();
 
   // Playback & parse state
   private isPlaying: boolean = false;
-  private isInfiniteLoop: boolean = false;
+  isInfiniteLoop: boolean = false;
   private allFinished: boolean = false;
   private maxTick: number = 0;
-  private totalDurationSeconds: number = 0;
+  totalDurationSeconds: number = 0;
 
   private playbackOffsetSeconds: number = 0;
   private playbackStartAudioTime: number = 0;
@@ -105,7 +103,7 @@ export class MMLScheduler {
     for (let ch = 0; ch < 16; ch++) {
       if (channels[ch].trim() !== "") {
         this.channels.push(ch);
-        this.visualizerNotesByChannel.set(ch, []);
+        this.notesByChannel.set(ch, []);
 
         const parser = new MMLChannelParser(
           ch,
@@ -199,26 +197,6 @@ export class MMLScheduler {
 
     // Duration is now known: full duration for finite, 1st loop duration for infinite
     this.totalDurationSeconds = this.tempoMap.tickToSeconds(this.maxTick);
-  }
-
-  public get duration(): number {
-    return this.totalDurationSeconds;
-  }
-
-  public get isInfinite(): boolean {
-    return this.isInfiniteLoop;
-  }
-
-  public get playing(): boolean {
-    return this.isPlaying;
-  }
-
-  public get visualizerNotes(): VisualizerNote[] {
-    return this._visualizerNotes;
-  }
-
-  public getChannelVisualizerNotes(channel: number): VisualizerNote[] {
-    return this.visualizerNotesByChannel.get(channel) ?? [];
   }
 
   /**
@@ -353,31 +331,6 @@ export class MMLScheduler {
         this.maxTick = noteEnd;
       }
 
-      // 1. Build VisualizerNote for real-time display
-      const noteStr =
-        NOTE_NAMES[event.baseNoteIndex] +
-        (event.totalAccidentials > 0
-          ? "#".repeat(event.totalAccidentials)
-          : "b".repeat(-event.totalAccidentials)) +
-        event.noteValue.toString() +
-        ".".repeat(event.totalDots) +
-        (event.isTie ? "&" : "") +
-        (event.isPortamento ? "_" : "");
-
-      const vNote: VisualizerNote = {
-        channel: event.channel,
-        noteStr,
-        octave: event.baseOctave,
-        startTick: event.tick,
-        endTick: event.tick + event.duration,
-        program: event.program,
-        volume: event.volume,
-        velocity: event.velocity,
-        pan: event.pan,
-      };
-      this._visualizerNotes.push(vNote);
-      this.visualizerNotesByChannel.get(event.channel)?.push(vNote);
-
       // 2. Compound note (tie, slur, portamento) pipeline
       const pending = state.pendingCompound;
 
@@ -387,6 +340,8 @@ export class MMLScheduler {
         if (pending.lastNote.isPortamento && lastSeg.portamentoTargetNote === undefined) {
           lastSeg.portamentoTargetNote = event.noteNumber;
           lastSeg.portamentoTargetDetuneCents = sbDetuneToCents(event.detune);
+          lastSeg.portamentoTargetNoteStr = MMLScheduler.noteString(event);
+          lastSeg.portamentoTargetOctave = event.baseOctave;
         }
 
         const prevNote = pending.lastNote;
@@ -415,6 +370,8 @@ export class MMLScheduler {
               volume: event.volume,
               pan: event.pan,
               isPortamento: event.isPortamento,
+              noteStr: MMLScheduler.noteString(event),
+              octave: event.baseOctave,
             });
             pending.totalDuration += event.duration;
           }
@@ -448,6 +405,8 @@ export class MMLScheduler {
               volume: event.volume,
               pan: event.pan,
               isPortamento: event.isPortamento,
+              noteStr: MMLScheduler.noteString(event),
+              octave: event.baseOctave,
             },
           ],
           totalDuration: event.duration,
@@ -457,6 +416,15 @@ export class MMLScheduler {
         this.emitSingleNote(event);
       }
     }
+  }
+  static noteString(event: NoteEvent){
+    return NOTE_NAMES[event.baseNoteIndex] +
+        (event.totalAccidentials > 0
+          ? "#".repeat(event.totalAccidentials)
+          : "b".repeat(-event.totalAccidentials)) +
+        (event.duration > 0 ? event.noteValue.toString() + ".".repeat(event.totalDots) : "") +
+        (event.isTie ? "&" : "") +
+        (event.isPortamento ? "_" : "")
   }
 
   private flushChannel(state: ChannelState): void {
@@ -484,7 +452,7 @@ export class MMLScheduler {
 
     const initialSeg = compound.segments[0];
 
-    const preparedNote: PreparedNote = {
+    const postProcessedNote: PostProcessedNote = {
       tick: compound.startTick,
       duration: compound.totalDuration,
       gateDuration,
@@ -500,22 +468,23 @@ export class MMLScheduler {
       segments: compound.segments,
     };
 
-    const noteEnd = preparedNote.tick + preparedNote.duration;
+    const noteEnd = postProcessedNote.tick + postProcessedNote.duration;
     if (noteEnd > this.maxTick) {
       this.maxTick = noteEnd;
     }
 
     this.events.push({
       type: "note",
-      event: preparedNote,
+      event: postProcessedNote,
     });
+    this.notesByChannel.get(first.channel)?.push(postProcessedNote);
     this.eventsNeedSort = true;
   }
 
   private emitSingleNote(n: NoteEvent): void {
     if (n.duration <= 0) return;
 
-    const preparedNote: PreparedNote = {
+    const postProcessedNote: PostProcessedNote = {
       tick: n.tick,
       duration: n.duration,
       gateDuration: Math.max(1, n.gateDuration),
@@ -538,19 +507,22 @@ export class MMLScheduler {
           volume: n.volume,
           pan: n.pan,
           isPortamento: false,
+          noteStr: MMLScheduler.noteString(n),
+              octave: n.baseOctave,
         },
       ],
     };
 
-    const noteEnd = preparedNote.tick + preparedNote.duration;
+    const noteEnd = postProcessedNote.tick + postProcessedNote.duration;
     if (noteEnd > this.maxTick) {
       this.maxTick = noteEnd;
     }
 
     this.events.push({
       type: "note",
-      event: preparedNote,
+      event: postProcessedNote,
     });
+    this.notesByChannel.get(n.channel)?.push(postProcessedNote);
     this.eventsNeedSort = true;
   }
 
@@ -755,7 +727,7 @@ export class MMLScheduler {
   }
 
   private async scheduleNote(
-    note: PreparedNote,
+    note: PostProcessedNote,
     audioTime: number,
   ): Promise<void> {
     const durationSec = this.tempoMap.durationTicksToSeconds(
@@ -804,7 +776,7 @@ export class MMLScheduler {
     }
   }
 
-  private getEventTime(ev: PreparedEvent): number {
+  private getEventTime(ev: PostProcessedEvent): number {
     const tick = ev.type === "note" ? ev.event.tick : ev.tick;
     return this.tempoMap.tickToSeconds(tick);
   }

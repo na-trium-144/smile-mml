@@ -69,6 +69,12 @@ export interface NoteSegment {
   isPortamento: boolean; // If true, glides linearly to portamentoTargetNote
   portamentoTargetNote?: number; // Target MIDI note number
   portamentoTargetDetuneCents?: number; // Target detune in cents
+  
+  // for NoteVisualizer
+  noteStr: string; // e.g. "C#4"
+  octave: number; // extracted octave number
+  portamentoTargetNoteStr?: string;  // used only for trailing portamento note (duration=0)
+  portamentoTargetOctave?: number;
 
   // Resolved timing in seconds (populated by MMLScheduler prior to playback)
   startTimeOffsetSec?: number;
@@ -78,7 +84,7 @@ export interface NoteSegment {
 /**
  * Prepared Note ready for scheduling with resolved lookahead portamento & ties
  */
-export interface PreparedNote {
+export interface PostProcessedNote {
   tick: number; // start tick
   duration: number; // total duration of compound note in ticks
   gateDuration: number; // gate duration in ticks (based on first note's Q)
@@ -97,8 +103,8 @@ export interface PreparedNote {
 /**
  * Prepared Channel Event
  */
-export type PreparedEvent =
-  | { type: 'note'; event: PreparedNote }
+export type PostProcessedEvent =
+  | { type: 'note'; event: PostProcessedNote }
   | { type: 'volume'; tick: number; channel: number; volume: number }
   | { type: 'pan'; tick: number; channel: number; pan: number }
   | { type: 'tempo'; tick: number; bpm: number }
