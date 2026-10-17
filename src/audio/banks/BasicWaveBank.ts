@@ -89,7 +89,9 @@ export class BasicWaveBank implements InstrumentBank {
             ignoreKey: true,
           }) as const,
       ),
-      [152, 310].map(
+      // mkII仕様のノイズを@159に登録しておく。
+      // sb3/sb4で未使用であり、sb2では隠し音源として144〜151のコピーが152〜にあり159も同じノイズであるため。
+      [159, 310].map(
         (p) =>
           ({
             program: p,

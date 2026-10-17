@@ -448,7 +448,7 @@ function SF2InstrumentTable() {
       <p className="my-1 text-paragraph text-sm">
         SmileMML 独自の拡張として <span className="text-sb3-label">@131</span>{" "}
         〜 <span className="text-sb3-label">@143</span>{" "}
-        にGM2標準のドラムセットを、 <span className="text-sb3-label">@152</span>{" "}
+        にGM2標準のドラムセットを、 <span className="text-sb3-label">@159</span>{" "}
         に プチコンmkII 仕様のノイズを追加しています。 また、{" "}
         <span className="text-sb3-label">
           @ バンク番号 × 1000 + プリセット番号
