@@ -52,7 +52,7 @@ export function About() {
           <span className="text-sb3-label">@MA</span>,{" "}
           <span className="text-sb3-label">@MP</span>,{" "}
           <span className="text-sb3-label">@ML</span>)
-          などを含むすべてのパラメータの挙動を再現しています。
+          などを含むすべてのパラメータの挙動をたぶん再現しています。
         </p>
         <p>
           さらに、各チャンネルの音符やパラメータをリアルタイムに可視化します。
