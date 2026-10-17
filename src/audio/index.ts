@@ -15,7 +15,6 @@ export type {
 
 // Instrument banks
 export type { InstrumentBank } from './banks/InstrumentBank.js';
-export { InstrumentRegistry } from './banks/InstrumentRegistry.js';
 export { BasicWaveBank } from './banks/BasicWaveBank.js';
 export { SF2InstrumentBank } from './banks/SF2InstrumentBank.js';
 export { NDSInstrumentBank } from './banks/NDSInstrumentBank.js';

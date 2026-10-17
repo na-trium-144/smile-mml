@@ -15,7 +15,10 @@ import { timecentToSeconds, centibelsToGain } from "../utils/conversion.js";
 import { OggVorbisDecoder } from "@wasm-audio-decoders/ogg-vorbis";
 
 export class SF2InstrumentBank implements InstrumentBank {
-  public readonly name: string;
+  readonly type = "sf2" as const;
+
+  readonly name: string;
+
   private sf: SoundFont | null = null;
   // Cache decoded PCM Float32Array per sample ID to avoid redundant decoding
   private pcmCache: Map<number, Float32Array> = new Map();

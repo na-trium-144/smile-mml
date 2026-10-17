@@ -16,10 +16,10 @@ import { generateLFSRNoise } from "../utils/noiseGenerator.js";
 import { convertSmileBASICEnvelope } from "../utils/conversion.js";
 
 export class BasicWaveBank implements InstrumentBank {
-  public readonly name = "BasicWaveBank";
+  readonly type = "basicWave" as const;
 
   // Default envelope for PSG: instant attack, full sustain, instant release
-  private readonly defaultPsgEnvelope: ADSRParams = {
+  static defaultPsgEnvelope: ADSRParams = {
     attackTime: 0,
     decayRate: 0,
     sustainLevel: 1.0,
@@ -143,7 +143,7 @@ export class BasicWaveBank implements InstrumentBank {
           id: `square_${programInfo.duty}`,
           real: harmonics.real,
           imag: harmonics.imag,
-          defaultEnvelope: programInfo.envelope ?? { ...this.defaultPsgEnvelope },
+          defaultEnvelope: programInfo.envelope ?? BasicWaveBank.defaultPsgEnvelope,
           defaultPan: 0,
           attenuation: 1,
           keyShift: programInfo.keyShift,
@@ -157,7 +157,7 @@ export class BasicWaveBank implements InstrumentBank {
           id: "sawtooth",
           real: harmonics.real,
           imag: harmonics.imag,
-          defaultEnvelope: { ...this.defaultPsgEnvelope },
+          defaultEnvelope: BasicWaveBank.defaultPsgEnvelope,
           defaultPan: 0,
           attenuation: 1,
           keyShift: programInfo.keyShift,
@@ -172,7 +172,7 @@ export class BasicWaveBank implements InstrumentBank {
           id: "sine",
           real: harmonics.real,
           imag: harmonics.imag,
-          defaultEnvelope: { ...this.defaultPsgEnvelope },
+          defaultEnvelope: BasicWaveBank.defaultPsgEnvelope,
           defaultPan: 0,
           attenuation: 1,
           keyShift: programInfo.keyShift,
@@ -183,7 +183,7 @@ export class BasicWaveBank implements InstrumentBank {
           kind: "noise",
           pcm: BasicWaveBank.NOISE_PCM,
           sampleRate: BasicWaveBank.sampleRate,
-          defaultEnvelope: { ...this.defaultPsgEnvelope },
+          defaultEnvelope: BasicWaveBank.defaultPsgEnvelope,
           defaultPan: 0,
           // 3号のノイズは音が小さい
           attenuation: programInfo.ignoreKey ? 0.5 : 1,

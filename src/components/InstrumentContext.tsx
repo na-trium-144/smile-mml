@@ -13,17 +13,17 @@ import {
   type ReactNode,
   type FC,
   useEffect,
+  useMemo,
 } from "react";
-import { InstrumentRegistry } from "../audio/banks/InstrumentRegistry.js";
 import { SF2InstrumentBank } from "../audio/banks/SF2InstrumentBank.js";
 import { NDSInstrumentBank } from "../audio/banks/NDSInstrumentBank.js";
 import clsx from "clsx";
-import { BasicWaveBank } from "../audio/index.js";
+import { BasicWaveBank, type InstrumentBank } from "../audio/index.js";
 
 const presetSF2Names = ["GeneralUser GS", "FluidR3 GM"] as const;
 
 interface InstrumentContextValue {
-  registry: InstrumentRegistry;
+  currentBanks: InstrumentBank[];
   sf2Name: string | null;
   sf2IsPreset: boolean;
   ndsName: string | null;
@@ -37,7 +37,7 @@ interface InstrumentContextValue {
   ndsBank: NDSInstrumentBank | null;
   selectSdat: (path: string) => void;
   bankSelected: "sf2" | "nds";
-  selectBank: (bank: "sf2" | "nds") => void;
+  setBankSelected: (bank: "sf2" | "nds") => void;
 }
 
 const InstrumentContext = createContext<InstrumentContextValue | null>(null);
@@ -55,30 +55,21 @@ export function useInstrumentContext(): InstrumentContextValue {
 export const InstrumentProvider: FC<{ children: ReactNode }> = ({
   children,
 }) => {
-  const registryRef = useRef<InstrumentRegistry>(new InstrumentRegistry());
   const ndsBufferRef = useRef<ArrayBuffer | null>(null);
 
   const [bankSelected, setBankSelected] = useState<"sf2" | "nds">("sf2");
+  // set時には前のbankをdisposeする
   const [sf2Bank, setSf2Bank] = useState<SF2InstrumentBank | null>(null);
   const [ndsBank, setNdsBank] = useState<NDSInstrumentBank | null>(null);
-  const selectBank = useCallback(
-    (bank: "sf2" | "nds") => {
-      switch (bank) {
-        case "sf2":
-          if (sf2Bank) {
-            registryRef.current.register(sf2Bank);
-          }
-          break;
-        case "nds":
-          if (ndsBank) {
-            registryRef.current.register(ndsBank);
-          }
-          break;
-      }
-      setBankSelected(bank);
-    },
-    [sf2Bank, ndsBank],
-  );
+  const currentBanks = useMemo<InstrumentBank[]>(() => {
+    if (bankSelected === "sf2" && sf2Bank) {
+      return [new BasicWaveBank(), sf2Bank];
+    }
+    if (bankSelected === "nds" && ndsBank) {
+      return [ndsBank];
+    }
+    return [];
+  }, [bankSelected, sf2Bank, ndsBank]);
 
   const [sf2IsPreset, setSf2IsPreset] = useState<boolean>(false);
   const [sf2Name, setSf2Name] = useState<string | null>(null);
@@ -118,9 +109,11 @@ export const InstrumentProvider: FC<{ children: ReactNode }> = ({
           await sf2Bank.load(buffer);
           setSf2IsPreset(false);
         }
-        registryRef.current.register(sf2Bank);
         setSf2Name(sf2Bank.name);
-        setSf2Bank(sf2Bank);
+        setSf2Bank((prev) => {
+          prev?.dispose();
+          return sf2Bank;
+        });
       } catch (err) {
         console.error("SF2 load error:", err);
         setLoadError(
@@ -135,12 +128,14 @@ export const InstrumentProvider: FC<{ children: ReactNode }> = ({
 
   const selectSdat = useCallback((path: string) => {
     if (ndsBufferRef.current && path) {
-      const ndsBank = new NDSInstrumentBank(ndsBufferRef.current, path);
-      registryRef.current.register(ndsBank);
+      const ndsBank = new NDSInstrumentBank(ndsBufferRef.current, ndsName ?? "", path);
       setSelectedNdsSdat(path);
-      setNdsBank(ndsBank);
+      setNdsBank((prev) => {
+        prev?.dispose();
+        return ndsBank;
+      });
     }
-  }, []);
+  }, [ndsName]);
 
   const loadNDS = useCallback(async (file: File) => {
     setLoadingAsset("NDS ROM");
@@ -153,10 +148,12 @@ export const InstrumentProvider: FC<{ children: ReactNode }> = ({
       setNdsSdats(sdats);
       setSelectedNdsSdat(sdats[0]);
       // Register first SDAT immediately
-      const ndsBank = new NDSInstrumentBank(ndsBufferRef.current, sdats[0]);
-      registryRef.current.register(ndsBank);
+      const ndsBank = new NDSInstrumentBank(ndsBufferRef.current, file.name, sdats[0]);
       setNdsName(file.name);
-      setNdsBank(ndsBank);
+      setNdsBank((prev) => {
+        prev?.dispose();
+        return ndsBank;
+      });
     } catch (err) {
       console.error("NDS ROM load error:", err);
       setLoadError(
@@ -190,7 +187,7 @@ export const InstrumentProvider: FC<{ children: ReactNode }> = ({
   }, [loadSF2]);
 
   const value: InstrumentContextValue = {
-    registry: registryRef.current,
+    currentBanks,
     sf2Name,
     sf2IsPreset,
     ndsName,
@@ -204,7 +201,7 @@ export const InstrumentProvider: FC<{ children: ReactNode }> = ({
     ndsBank,
     selectSdat,
     bankSelected,
-    selectBank,
+    setBankSelected,
   };
 
   return (
@@ -227,7 +224,7 @@ export function InstrumentSelect() {
     loadNDS,
     selectSdat,
     bankSelected,
-    selectBank,
+    setBankSelected,
   } = useInstrumentContext();
 
   return (
@@ -256,7 +253,7 @@ export function InstrumentSelect() {
             checked={bankSelected === "sf2"}
             onChange={(e) => {
               if (e.target.checked) {
-                selectBank("sf2");
+                setBankSelected("sf2");
               }
             }}
           />
@@ -268,7 +265,7 @@ export function InstrumentSelect() {
             checked={bankSelected === "nds"}
             onChange={(e) => {
               if (e.target.checked) {
-                selectBank("nds");
+                setBankSelected("nds");
               }
             }}
           />
@@ -340,16 +337,21 @@ export function InstrumentSelect() {
           </>
         ) : (
           <>
-            <div key="nds" className="flex items-center gap-2 mb-2">
-              <span className="">NDS ROM (.nds / .sdat)</span>
+            <div key="nds" className="flex flex-wrap items-center gap-2 mb-2">
+              <span className="">NDS ROM (.nds / .sdat) を選択</span>
+              <div className={clsx(ndsName && "join")}>
               <label
                 htmlFor="NDSInstrumentInput"
-                className="btn btn-accent btn-sm"
+                className={clsx(
+                    "btn btn-accent btn-sm",
+                    ndsName && "join-item",
+                  )}
               >
-                ファイルを選択...
+                ファイルを読み込む...
               </label>
               <input
                 type="file"
+                id="NDSInstrumentInput"
                 className="hidden"
                 accept=".nds,.sdat"
                 disabled={loadingAsset !== null}
@@ -360,11 +362,15 @@ export function InstrumentSelect() {
                 }}
               />
               {ndsName && (
-                <div className="badge badge-success badge-sm">✓ {ndsName}</div>
-              )}
+                  <input
+                    className="input input-sm join-item"
+                    value={ndsName}
+                    readOnly
+                  />
+                )}
               {ndsSdats.length >= 1 && (
                 <select
-                  className="select select-sm w-max"
+                  className="select select-sm"
                   value={selectedNdsSdat}
                   onChange={(e) => selectSdat(e.target.value)}
                 >
@@ -375,6 +381,7 @@ export function InstrumentSelect() {
                   ))}
                 </select>
               )}
+            </div>
             </div>
             <p className="mb-2 text-paragraph text-xs">
               ファイルをドラッグ&ドロップで読み込むこともできます。

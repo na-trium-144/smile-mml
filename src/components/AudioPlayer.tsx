@@ -28,7 +28,7 @@ const formatTime = (sec: number) => {
 };
 
 export function AudioPlayer() {
-  const { registry } = useInstrumentContext();
+  const { currentBanks } = useInstrumentContext();
   const { currentFile } = usePlaylist();
   const { content: mml } = currentFile;
   
@@ -44,6 +44,17 @@ export function AudioPlayer() {
 
   const synthRef = useRef<SynthEngine | null>(null);
   const schedulerRef = useRef<MMLScheduler | null>(null);
+
+  const getSynth = useCallback(() => {
+    if (!synthRef.current) {
+      synthRef.current = new SynthEngine();
+    }
+    return synthRef.current;
+  }, []);
+
+  useEffect(() => {
+    schedulerRef.current?.setInstrumentBanks(currentBanks);
+  }, [currentBanks])
 
   // Provide a stable callback for NoteVisualizer to read current time from scheduler
   const getVisualizerTick = useCallback(
@@ -66,19 +77,13 @@ export function AudioPlayer() {
     };
   }, []);
 
-  const getSynth = useCallback(() => {
-    if (!synthRef.current) {
-      synthRef.current = new SynthEngine(registry);
-    }
-    return synthRef.current;
-  }, [registry]);
-
   const buildScheduler = useCallback<() => MMLScheduler>(() => {
     setErrors([]);
 
     const synth = getSynth();
     const scheduler = new MMLScheduler(
       synth,
+      currentBanks,
       mml,
       TICKS_PER_WHOLE_NOTE,
       (e) => {
@@ -106,7 +111,7 @@ export function AudioPlayer() {
     setActiveChannels(scheduler.channels);
     setTotalTime(scheduler.duration);
     return scheduler;
-  }, [getSynth, mml]);
+  }, [getSynth, mml, currentBanks]);
 
   // Initialize or re-create scheduler when MML changes so totalTime is immediately known
   useEffect(() => {

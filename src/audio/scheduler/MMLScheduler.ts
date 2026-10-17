@@ -6,7 +6,7 @@
  */
 
 import type { SynthEngine } from "../synth/SynthEngine.js";
-import type { PreparedEvent, PreparedNote } from "../types.js";
+import type { PreparedEvent, PreparedNote, VoiceData } from "../types.js";
 import type { MMLEvent, NoteEvent } from "../../parser/types.js";
 import {
   MMLChannelParser,
@@ -16,19 +16,23 @@ import {
 import { sbDetuneToCents } from "../utils/conversion.js";
 import { TempoMap } from "./TempoMap.js";
 import type { VisualizerNote } from "../../components/NoteVisualizer.js";
+import type { InstrumentBank } from "../banks/InstrumentBank.js";
 
 interface ChannelState {
   channelIndex: number;
   parser: MMLChannelParser;
   generator: Generator<MMLEvent, void, unknown>;
   nextResult: IteratorResult<MMLEvent, void> | null;
-  pendingNote: (NoteEvent & { portamentoTargetNote?: number; isSlur?: boolean }) | null;
+  pendingNote:
+    | (NoteEvent & { portamentoTargetNote?: number; isSlur?: boolean })
+    | null;
   isFinished: boolean;
   firstInfiniteLoopReached: boolean;
 }
 
 export class MMLScheduler {
   private synth: SynthEngine;
+  private instrumentBanks: InstrumentBank[];
   private tempoMap: TempoMap;
   public onError: (e: unknown) => void;
   public readonly ticksPerWholeNote: number;
@@ -73,13 +77,19 @@ export class MMLScheduler {
   ) => void;
   public onEnded?: () => void;
 
+  setInstrumentBanks(banks: InstrumentBank[]){
+    this.instrumentBanks = banks;
+  }
+
   constructor(
     synth: SynthEngine,
+    banks: InstrumentBank[],
     mml: string,
     ticksPerWholeNote: number = 192,
     onError: (e: unknown) => void,
   ) {
     this.synth = synth;
+    this.instrumentBanks = banks;
     this.ticksPerWholeNote = ticksPerWholeNote;
     this.onError = onError;
     this.tempoMap = new TempoMap([], ticksPerWholeNote);
@@ -95,7 +105,7 @@ export class MMLScheduler {
           ch,
           channels[ch],
           mml,
-          initialKeyShift
+          initialKeyShift,
         );
         const generator = parser.nextEvent();
         const nextResult = generator.next();
@@ -358,14 +368,20 @@ export class MMLScheduler {
       this.visualizerNotesByChannel.get(event.channel)?.push(vNote);
 
       // 2. Tie & Portamento resolution and emission pipeline
-      const curr: NoteEvent & { portamentoTargetNote?: number; isSlur?: boolean } = {
+      const curr: NoteEvent & {
+        portamentoTargetNote?: number;
+        isSlur?: boolean;
+      } = {
         ...event,
       };
       const pending = state.pendingNote;
 
       if (pending) {
         // Resolve portamento target for pending note
-        if (pending.isPortamento && pending.portamentoTargetNote === undefined) {
+        if (
+          pending.isPortamento &&
+          pending.portamentoTargetNote === undefined
+        ) {
           pending.portamentoTargetNote = curr.noteNumber;
         }
 
@@ -456,7 +472,9 @@ export class MMLScheduler {
       detuneCents: sbDetuneToCents(n.detune),
       envelope: n.envelope,
       modulation: n.modulation,
-      isPortamento: Boolean(n.isPortamento && n.portamentoTargetNote !== undefined),
+      isPortamento: Boolean(
+        n.isPortamento && n.portamentoTargetNote !== undefined,
+      ),
       portamentoTargetNote: n.portamentoTargetNote,
       isSlur: n.isSlur,
     };
@@ -516,7 +534,8 @@ export class MMLScheduler {
     this.nextEventIndex = 0;
     while (
       this.nextEventIndex < this.events.length &&
-      this.getEventTime(this.events[this.nextEventIndex]) < this.playbackOffsetSeconds
+      this.getEventTime(this.events[this.nextEventIndex]) <
+        this.playbackOffsetSeconds
     ) {
       this.nextEventIndex++;
     }
@@ -578,7 +597,8 @@ export class MMLScheduler {
     this.nextEventIndex = 0;
     while (
       this.nextEventIndex < this.events.length &&
-      this.getEventTime(this.events[this.nextEventIndex]) < this.playbackOffsetSeconds
+      this.getEventTime(this.events[this.nextEventIndex]) <
+        this.playbackOffsetSeconds
     ) {
       this.nextEventIndex++;
     }
@@ -641,7 +661,7 @@ export class MMLScheduler {
           // そもそも並列化する必要があるかどうかも要検証
           await this.scheduleNote(ev.event, targetAudioTime).catch((e) => {
             this.onError(e);
-          })
+          });
         }
 
         this.nextEventIndex++;
@@ -668,7 +688,10 @@ export class MMLScheduler {
     window.setTimeout(tickLoop, 0);
   }
 
-  private async scheduleNote(note: PreparedNote, audioTime: number): Promise<void> {
+  private async scheduleNote(
+    note: PreparedNote,
+    audioTime: number,
+  ): Promise<void> {
     const durationSec = this.tempoMap.durationTicksToSeconds(
       note.tick,
       note.duration,
@@ -678,12 +701,29 @@ export class MMLScheduler {
       note.gateDuration,
     );
 
-    await this.synth.playNote(
-      note,
-      Math.max(this.synth.currentTime, audioTime),
-      durationSec,
-      gateDurationSec,
-    );
+    let voiceData: VoiceData | null = null;
+    if (this.instrumentBanks.length === 0) {
+      throw new Error("音源データが読み込まれていません");
+    }
+    for (const bank of this.instrumentBanks) {
+      voiceData = await bank.getVoice(
+        note.program,
+        note.noteNumber,
+        note.velocity,
+      );
+      if (voiceData) break;
+    }
+    if (voiceData) {
+      await this.synth.playNote(
+        voiceData,
+        note,
+        Math.max(this.synth.currentTime, audioTime),
+        durationSec,
+        gateDurationSec,
+      );
+    } else {
+      throw new Error(`@${note.program} に対応する音源が見つかりません`);
+    }
   }
 
   private getEventTime(ev: PreparedEvent): number {

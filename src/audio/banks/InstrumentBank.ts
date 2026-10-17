@@ -7,8 +7,7 @@
 import type { VoiceData } from '../types.js';
 
 export interface InstrumentBank {
-  readonly name: string;
-
+  readonly type: "sf2" | "basicWave" | "nds";
   /**
    * Get voice data for the specified program, note, and velocity.
    * Resolves key splits, velocity layers, sample looping, and default ADSR.

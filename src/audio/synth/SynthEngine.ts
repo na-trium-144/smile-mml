@@ -4,8 +4,7 @@
  * portamento glides, envelopes, and modulations across all sound sources.
  */
 
-import type { InstrumentRegistry } from "../banks/InstrumentRegistry.js";
-import type { PreparedNote, ADSRParams } from "../types.js";
+import type { PreparedNote, ADSRParams, VoiceData } from "../types.js";
 import {
   midiNoteToFrequency,
   convertSmileBASICEnvelope,
@@ -25,7 +24,6 @@ interface ActiveVoiceRecord {
 export class SynthEngine {
   public readonly ctx: AudioContext;
   public readonly masterGain: GainNode;
-  public readonly registry: InstrumentRegistry;
 
   // Track active voices for volume changes and immediate stops
   private activeVoices: Set<ActiveVoiceRecord> = new Set();
@@ -36,16 +34,14 @@ export class SynthEngine {
   // PeriodicWave cache
   private periodicWaveCache: Map<string, PeriodicWave> = new Map();
 
-  constructor(registry: InstrumentRegistry, ctx?: AudioContext) {
+  constructor() {
     this.ctx =
-      ctx ||
       new (window.AudioContext ||
         (window as unknown as { webkitAudioContext: typeof AudioContext })
           .webkitAudioContext)();
     this.masterGain = this.ctx.createGain();
     this.masterGain.gain.setValueAtTime(0.8, this.ctx.currentTime);
     this.masterGain.connect(this.ctx.destination);
-    this.registry = registry;
   }
 
   /**
@@ -76,18 +72,12 @@ export class SynthEngine {
    * Play a prepared note event at the scheduled time
    */
   public async playNote(
+    voiceData: VoiceData,
     note: PreparedNote,
     startTime: number,
     durationSec: number,
     gateDurationSec: number,
   ): Promise<void> {
-    const voiceData = await this.registry.getVoice(
-      note.program,
-      note.noteNumber,
-      note.velocity,
-    );
-    if (!voiceData) return;
-
     // 1. Resolve envelope (SmileBASIC @E override or bank default)
     const envelope: ADSRParams = note.envelope.enabled
       ? convertSmileBASICEnvelope(note.envelope)

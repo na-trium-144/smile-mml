@@ -20,13 +20,13 @@ import type {
   SampleVoiceData,
   PeriodicVoiceData,
 } from "../types.js";
-import {
-  PSG_DUTY_CYCLES,
-} from "../utils/waveformGenerator.js";
+import { PSG_DUTY_CYCLES } from "../utils/waveformGenerator.js";
 import { BasicWaveBank } from "./BasicWaveBank.js";
 
 export class NDSInstrumentBank implements InstrumentBank {
-  public readonly name: string = "Nintendo DS ROM";
+  readonly type = "nds" as const;
+
+  readonly name: string;
 
   private sdat: InstanceType<typeof Audio.SDAT> | null = null;
   private sbnkList: InstanceType<typeof Audio.SBNK>[] = [];
@@ -90,7 +90,7 @@ export class NDSInstrumentBank implements InstrumentBank {
   /**
    * Load NDS ROM or SDAT binary buffer
    */
-  constructor(raw: ArrayBuffer, path: string) {
+  constructor(raw: ArrayBuffer, filename: string, path: string) {
     let sdatRaw: ArrayBuffer | null = null;
 
     if (path === "Raw SDAT") {
@@ -99,6 +99,8 @@ export class NDSInstrumentBank implements InstrumentBank {
       const fs = NitroFS.fromRom(raw);
       sdatRaw = fs.readFile(path);
     }
+
+    this.name = `${filename}/${path}`;
 
     // 3. Initialize SDAT
     const reader = BufferReader.new(sdatRaw);
@@ -377,10 +379,12 @@ export class NDSInstrumentBank implements InstrumentBank {
     return (ticks * NDSInstrumentBank.TICK_INTERVAL_MS) / 1000;
   }
 
-  static getFallRate(raw: number){
+  static getFallRate(raw: number) {
     const fallRate = NDSInstrumentBank.convertFall(raw);
     // 毎tick `fallRate` ずつ減衰する
-    return NDSInstrumentBank.convertVolume2(fallRate / (NDSInstrumentBank.TICK_INTERVAL_MS / 1000));
+    return NDSInstrumentBank.convertVolume2(
+      fallRate / (NDSInstrumentBank.TICK_INTERVAL_MS / 1000),
+    );
   }
 
   /*
