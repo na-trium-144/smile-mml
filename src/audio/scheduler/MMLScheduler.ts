@@ -6,7 +6,7 @@
  */
 
 import type { SynthEngine } from "../synth/SynthEngine.js";
-import type { PreparedEvent, PreparedNote } from "../types.js";
+import type { PreparedEvent, PreparedNote, NoteSegment } from "../types.js";
 import type { MMLEvent, NoteEvent } from "../../parser/types.js";
 import {
   MMLChannelParser,
@@ -17,12 +17,20 @@ import { sbDetuneToCents } from "../utils/conversion.js";
 import { TempoMap } from "./TempoMap.js";
 import type { VisualizerNote } from "../../components/NoteVisualizer.js";
 
+interface PendingCompound {
+  startTick: number;
+  firstNote: NoteEvent;
+  segments: NoteSegment[];
+  totalDuration: number;
+  lastNote: NoteEvent;
+}
+
 interface ChannelState {
   channelIndex: number;
   parser: MMLChannelParser;
   generator: Generator<MMLEvent, void, unknown>;
   nextResult: IteratorResult<MMLEvent, void> | null;
-  pendingNote: (NoteEvent & { portamentoTargetNote?: number; isSlur?: boolean }) | null;
+  pendingCompound: PendingCompound | null;
   isFinished: boolean;
   firstInfiniteLoopReached: boolean;
 }
@@ -106,7 +114,7 @@ export class MMLScheduler {
           parser,
           generator,
           nextResult,
-          pendingNote: null,
+          pendingCompound: null,
           isFinished: Boolean(nextResult.done),
           firstInfiniteLoopReached: false,
         });
@@ -248,7 +256,7 @@ export class MMLScheduler {
         let hasPending = false;
         for (const [, state] of this.channelStates) {
           if (state.isFinished) continue;
-          if (state.pendingNote) {
+          if (state.pendingCompound) {
             hasPending = true;
             break;
           }
@@ -317,6 +325,11 @@ export class MMLScheduler {
       return;
     }
 
+    if (event.type === "rest") {
+      this.flushChannel(state);
+      return;
+    }
+
     if (event.type === "end") {
       this.flushChannel(state);
       state.isFinished = true;
@@ -355,75 +368,91 @@ export class MMLScheduler {
       this._visualizerNotes.push(vNote);
       this.visualizerNotesByChannel.get(event.channel)?.push(vNote);
 
-      // 2. Tie & Portamento resolution and emission pipeline
-      const curr: NoteEvent & { portamentoTargetNote?: number; isSlur?: boolean } = {
-        ...event,
-      };
-      const pending = state.pendingNote;
+      // 2. Compound note (tie, slur, portamento) pipeline
+      const pending = state.pendingCompound;
 
       if (pending) {
-        // Resolve portamento target for pending note
-        if (pending.isPortamento && pending.portamentoTargetNote === undefined) {
-          pending.portamentoTargetNote = curr.noteNumber;
+        // Resolve portamento target for previous portamento segment if any
+        const lastSeg = pending.segments[pending.segments.length - 1];
+        if (pending.lastNote.isPortamento && lastSeg.portamentoTargetNote === undefined) {
+          lastSeg.portamentoTargetNote = event.noteNumber;
+          lastSeg.portamentoTargetDetuneCents = sbDetuneToCents(event.detune);
         }
 
-        // Merge contiguous same-pitch tie
-        if (
-          pending.isTie &&
-          pending.noteNumber === curr.noteNumber &&
-          pending.tick + pending.duration === curr.tick
-        ) {
-          pending.duration += curr.duration;
-          pending.gateDuration += curr.gateDuration;
-          pending.isTie = curr.isTie;
-          if (curr.isPortamento) {
-            pending.isPortamento = true;
-            pending.portamentoTargetNote = undefined;
-          }
+        const prevNote = pending.lastNote;
+        const isIdentical =
+          prevNote.noteNumber === event.noteNumber &&
+          prevNote.velocity === event.velocity &&
+          prevNote.volume === event.volume &&
+          prevNote.pan === event.pan &&
+          prevNote.detune === event.detune;
 
-          // If pending note still needs resolution (further tie or unresolved portamento), keep pending
-          if (
-            pending.isTie ||
-            (pending.isPortamento && pending.portamentoTargetNote === undefined)
-          ) {
-            return;
+        // Same pitch and parameters following a tie (&): merge segment into previous one
+        if (prevNote.isTie && isIdentical) {
+          lastSeg.durationTicks += event.duration;
+          lastSeg.isPortamento = event.isPortamento;
+          pending.totalDuration += event.duration;
+          pending.lastNote = event;
+        } else {
+          // Different pitch or parameter change (slur), or following a portamento (_)
+          if (event.duration > 0 || event.isTie || event.isPortamento) {
+            pending.segments.push({
+              tickOffset: event.tick - pending.startTick,
+              durationTicks: event.duration,
+              noteNumber: event.noteNumber,
+              detuneCents: sbDetuneToCents(event.detune),
+              velocity: event.velocity,
+              volume: event.volume,
+              pan: event.pan,
+              isPortamento: event.isPortamento,
+            });
+            pending.totalDuration += event.duration;
           }
+          pending.lastNote = event;
+        }
 
-          // Fully resolved: emit merged note and clear pending
-          this.emitPreparedNote(pending);
-          state.pendingNote = null;
+        // Check if compound note continues
+        if (event.isTie || event.isPortamento) {
           return;
         }
 
-        // Different note: emit pending note
-        this.emitPreparedNote(pending);
-        state.pendingNote = null;
-
-        // Slur check: pending was a tie with contiguous ticks but different pitch
-        if (
-          pending.isTie &&
-          pending.tick + pending.duration === curr.tick &&
-          pending.noteNumber !== curr.noteNumber
-        ) {
-          curr.isSlur = true;
-        }
+        // Compound note fully resolved: emit and clear pending
+        this.emitCompoundNote(pending);
+        state.pendingCompound = null;
+        return;
       }
 
-      // Process curr:
-      // If curr needs lookahead for tie or portamento target, hold it in pendingNote.
-      // Otherwise, emit immediately without waiting for next note!
-      if (curr.isTie || curr.isPortamento) {
-        state.pendingNote = curr;
+      // No pending compound:
+      // If event initiates a tie or portamento, start a new pendingCompound
+      if (event.isTie || event.isPortamento) {
+        state.pendingCompound = {
+          startTick: event.tick,
+          firstNote: event,
+          segments: [
+            {
+              tickOffset: 0,
+              durationTicks: event.duration,
+              noteNumber: event.noteNumber,
+              detuneCents: sbDetuneToCents(event.detune),
+              velocity: event.velocity,
+              volume: event.volume,
+              pan: event.pan,
+              isPortamento: event.isPortamento,
+            },
+          ],
+          totalDuration: event.duration,
+          lastNote: event,
+        };
       } else {
-        this.emitPreparedNote(curr);
+        this.emitSingleNote(event);
       }
     }
   }
 
   private flushChannel(state: ChannelState): void {
-    if (state.pendingNote) {
-      this.emitPreparedNote(state.pendingNote);
-      state.pendingNote = null;
+    if (state.pendingCompound) {
+      this.emitCompoundNote(state.pendingCompound);
+      state.pendingCompound = null;
     }
   }
 
@@ -436,10 +465,45 @@ export class MMLScheduler {
     }
   }
 
-  private emitPreparedNote(
-    n: NoteEvent & { portamentoTargetNote?: number; isSlur?: boolean },
-  ): void {
-    if (n.duration <= 0) return; // Skip 0-duration portamento target notes (e.g. E in C4_E)
+  private emitCompoundNote(compound: PendingCompound): void {
+    if (compound.totalDuration <= 0) return;
+
+    const first = compound.firstNote;
+    const gateRatio = first.gate / 8;
+    const gateDuration = Math.max(1, Math.round(compound.totalDuration * gateRatio));
+
+    const initialSeg = compound.segments[0];
+
+    const preparedNote: PreparedNote = {
+      tick: compound.startTick,
+      duration: compound.totalDuration,
+      gateDuration,
+      channel: first.channel,
+      noteNumber: initialSeg.noteNumber,
+      velocity: initialSeg.velocity, // V in MML
+      volume: initialSeg.volume, // @V in MML
+      pan: initialSeg.pan, // P in MML
+      program: first.program,
+      detuneCents: initialSeg.detuneCents,
+      envelope: first.envelope,
+      modulation: first.modulation,
+      segments: compound.segments,
+    };
+
+    const noteEnd = preparedNote.tick + preparedNote.duration;
+    if (noteEnd > this.maxTick) {
+      this.maxTick = noteEnd;
+    }
+
+    this.events.push({
+      type: "note",
+      event: preparedNote,
+    });
+    this.eventsNeedSort = true;
+  }
+
+  private emitSingleNote(n: NoteEvent): void {
+    if (n.duration <= 0) return;
 
     const preparedNote: PreparedNote = {
       tick: n.tick,
@@ -447,16 +511,25 @@ export class MMLScheduler {
       gateDuration: Math.max(1, n.gateDuration),
       channel: n.channel,
       noteNumber: n.noteNumber,
-      velocity: n.volume, // V in MML
-      volume: n.velocity, // @V in MML
+      velocity: n.velocity, // V in MML
+      volume: n.volume, // @V in MML
       pan: n.pan,
       program: n.program,
       detuneCents: sbDetuneToCents(n.detune),
       envelope: n.envelope,
       modulation: n.modulation,
-      isPortamento: Boolean(n.isPortamento && n.portamentoTargetNote !== undefined),
-      portamentoTargetNote: n.portamentoTargetNote,
-      isSlur: n.isSlur,
+      segments: [
+        {
+          tickOffset: 0,
+          durationTicks: n.duration,
+          noteNumber: n.noteNumber,
+          detuneCents: sbDetuneToCents(n.detune),
+          velocity: n.velocity,
+          volume: n.volume,
+          pan: n.pan,
+          isPortamento: false,
+        },
+      ],
     };
 
     const noteEnd = preparedNote.tick + preparedNote.duration;
@@ -551,6 +624,7 @@ export class MMLScheduler {
     this.playbackOffsetSeconds = 0;
     this.nextEventIndex = 0;
     this.synth.stopAll();
+    this.synth.resetChannelVolumes();
 
     this.notifyProgress();
   }
@@ -639,6 +713,8 @@ export class MMLScheduler {
           } catch (e) {
             this.onError(e);
           }
+        } else if (ev.type === "volume") {
+          this.synth.setChannelVolume(ev.channel, ev.volume, targetAudioTime);
         }
 
         this.nextEventIndex++;
@@ -674,6 +750,18 @@ export class MMLScheduler {
       note.tick,
       note.gateDuration,
     );
+
+    // Calculate timing in seconds for each segment
+    for (const seg of note.segments) {
+      seg.startTimeOffsetSec = this.tempoMap.durationTicksToSeconds(
+        note.tick,
+        seg.tickOffset,
+      );
+      seg.durationSec = this.tempoMap.durationTicksToSeconds(
+        note.tick + seg.tickOffset,
+        seg.durationTicks,
+      );
+    }
 
     this.synth.playNote(
       note,
