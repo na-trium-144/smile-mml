@@ -192,7 +192,7 @@ export class SynthEngine {
           if (seg.isPortamento && seg.portamentoTargetNote !== undefined) {
             const targetDetune = seg.portamentoTargetDetuneCents ?? seg.detuneCents;
             const targetRate = getPlaybackRate(seg.portamentoTargetNote, targetDetune);
-            src.playbackRate.linearRampToValueAtTime(targetRate, segEndTime);
+            src.playbackRate.linearRampToValueAtTime(targetRate, segEndTime - 0.001);
           }
         }
 
@@ -248,7 +248,7 @@ export class SynthEngine {
         if (seg.isPortamento && seg.portamentoTargetNote !== undefined) {
           const targetDetune = seg.portamentoTargetDetuneCents ?? seg.detuneCents;
           const targetFreq = midiNoteToFrequency(seg.portamentoTargetNote + (voiceData.keyShift ?? 0), targetDetune);
-          osc.frequency.linearRampToValueAtTime(targetFreq, segEndTime);
+          osc.frequency.linearRampToValueAtTime(targetFreq, segEndTime - 0.001);
         }
 
         // Schedule mid-compound parameter changes (V, P)
