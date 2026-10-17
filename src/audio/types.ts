@@ -56,24 +56,42 @@ export interface PeriodicVoiceData {
 export type VoiceData = SampleVoiceData | PeriodicVoiceData;
 
 /**
+ * Segment within a compound note representing pitch glides or mid-note parameter changes.
+ */
+export interface NoteSegment {
+  tickOffset: number; // Offset in ticks from the start of the PreparedNote
+  durationTicks: number; // Duration of this segment in ticks
+  noteNumber: number; // MIDI note number (0 - 127)
+  detuneCents: number; // Detune in cents (-100 to +100)
+  velocity: number; // V parameter (0 - 127)
+  volume: number; // @V parameter (0 - 127)
+  pan: number; // P parameter (0 - 127)
+  isPortamento: boolean; // If true, glides linearly to portamentoTargetNote
+  portamentoTargetNote?: number; // Target MIDI note number
+  portamentoTargetDetuneCents?: number; // Target detune in cents
+
+  // Resolved timing in seconds (populated by MMLScheduler prior to playback)
+  startTimeOffsetSec?: number;
+  durationSec?: number;
+}
+
+/**
  * Prepared Note ready for scheduling with resolved lookahead portamento & ties
  */
 export interface PreparedNote {
   tick: number; // start tick
-  duration: number; // duration in ticks
-  gateDuration: number; // gate duration in ticks
+  duration: number; // total duration of compound note in ticks
+  gateDuration: number; // gate duration in ticks (based on first note's Q)
   channel: number; // 0 - 15
-  noteNumber: number; // 0 - 127
-  velocity: number; // 0 - 127 (from MML V command)
-  volume: number; // 0 - 127 (from MML @V command)
-  pan: number; // 0 - 127 (64 is center)
+  noteNumber: number; // initial note number
+  velocity: number; // initial velocity (V)
+  volume: number; // initial volume (@V)
+  pan: number; // initial pan (P)
   program: number; // 0 - 511 (@)
   detuneCents: number; // cents from @D (-100 to +100)
-  envelope: EnvelopeParams; // MML @E setting
-  modulation: ModulationParams; // MML @MA, @MP, @ML setting
-  isPortamento: boolean; // has portamento glide
-  portamentoTargetNote?: number; // 1-note lookahead target note number
-  isSlur?: boolean; // connected with non-same pitch tie (&)
+  envelope: EnvelopeParams; // envelope of the first note (@E)
+  modulation: ModulationParams; // modulation of the first note (@MA, @MP, @ML)
+  segments: NoteSegment[]; // pitch & parameter trajectory segments
 }
 
 /**
