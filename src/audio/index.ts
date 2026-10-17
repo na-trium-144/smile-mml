@@ -9,8 +9,6 @@ export type {
   SampleVoiceData,
   PeriodicVoiceData,
   VoiceData,
-  PreparedNote,
-  PreparedEvent,
 } from './types.js';
 
 // Instrument banks

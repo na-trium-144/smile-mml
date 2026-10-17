@@ -47,7 +47,6 @@ export interface NoteVisualizerProps {
 }
 
 const CHANNEL_HEIGHT = 20;
-const SOUNDING_RADIUS = 4;
 const PADDING_X = 1;
 const PIXELS_PER_TICK = 4; // horizontal scale
 const FONT_SIZE = 16;

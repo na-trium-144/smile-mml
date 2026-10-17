@@ -4,7 +4,7 @@
  * portamento glides, envelopes, and modulations across all sound sources.
  */
 
-import type { PostProcessedNote, ADSRParams, VoiceData, NoteSegment } from "../types.js";
+import type { PostProcessedNote, ADSRParams, VoiceData } from "../types.js";
 import {
   midiNoteToFrequency,
   convertSmileBASICEnvelope,
