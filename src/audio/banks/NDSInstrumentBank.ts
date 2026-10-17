@@ -19,16 +19,14 @@ import type {
   ADSRParams,
   SampleVoiceData,
   PeriodicVoiceData,
-  NoiseVoiceData,
 } from "../types.js";
-import {
-  generateSquareWaveHarmonics,
-  PSG_DUTY_CYCLES,
-} from "../utils/waveformGenerator.js";
-import { generateLFSRNoise } from "../utils/noiseGenerator.js";
+import { PSG_DUTY_CYCLES } from "../utils/waveformGenerator.js";
+import { BasicWaveBank } from "./BasicWaveBank.js";
 
 export class NDSInstrumentBank implements InstrumentBank {
-  public readonly name: string = "Nintendo DS ROM";
+  readonly type = "nds" as const;
+
+  readonly name: string;
 
   private sdat: InstanceType<typeof Audio.SDAT> | null = null;
   private sbnkList: InstanceType<typeof Audio.SBNK>[] = [];
@@ -36,9 +34,6 @@ export class NDSInstrumentBank implements InstrumentBank {
 
   // Decoded PCM cache by "swarId:waveId"
   private pcmCache: Map<string, Float32Array> = new Map();
-
-  // Noise PCM cache
-  private noisePcm: Float32Array | null = null;
 
   /**
    * get list of SDATs
@@ -95,7 +90,7 @@ export class NDSInstrumentBank implements InstrumentBank {
   /**
    * Load NDS ROM or SDAT binary buffer
    */
-  constructor(raw: ArrayBuffer, path: string) {
+  constructor(raw: ArrayBuffer, filename: string, path: string) {
     let sdatRaw: ArrayBuffer | null = null;
 
     if (path === "Raw SDAT") {
@@ -104,6 +99,8 @@ export class NDSInstrumentBank implements InstrumentBank {
       const fs = NitroFS.fromRom(raw);
       sdatRaw = fs.readFile(path);
     }
+
+    this.name = `${filename}/${path}`;
 
     // 3. Initialize SDAT
     const reader = BufferReader.new(sdatRaw);
@@ -204,15 +201,15 @@ export class NDSInstrumentBank implements InstrumentBank {
       const direct = inst as InstanceType<typeof Audio.DirectInstrument>;
       const dutyIndex = Math.min(6, direct.noteInfo.waveId % 7);
       const duty = PSG_DUTY_CYCLES[dutyIndex];
-      const harmonics = generateSquareWaveHarmonics(duty, 64);
+      const harmonics = BasicWaveBank.PSG_HARMONICS.get(duty)!;
       const voice: PeriodicVoiceData = {
         kind: "periodic",
-        duty,
+        id: `${this.name}_psg_${duty}`,
         real: harmonics.real,
         imag: harmonics.imag,
         defaultEnvelope: this.convertNdsEnvelope(direct.noteInfo),
         defaultPan: (direct.noteInfo.pan - 64) / 64,
-        attenuation: 0.8,
+        attenuation: 1,
       };
       return voice;
     }
@@ -220,17 +217,19 @@ export class NDSInstrumentBank implements InstrumentBank {
     // Handle White Noise Instrument
     else if (inst.type === Audio.InstrumentType.WhiteNoise) {
       const direct = inst as InstanceType<typeof Audio.DirectInstrument>;
-      if (!this.noisePcm) {
-        this.noisePcm = generateLFSRNoise(44100, 1.0);
-      }
-      const voice: NoiseVoiceData = {
+      const voice: SampleVoiceData = {
         kind: "noise",
-        noiseType: "lfsr",
-        pcm: this.noisePcm,
-        sampleRate: 44100,
+        pcm: BasicWaveBank.NOISE_PCM,
+        sampleRate: 48000,
         defaultEnvelope: this.convertNdsEnvelope(direct.noteInfo),
         defaultPan: (direct.noteInfo.pan - 64) / 64,
-        attenuation: 0.8,
+        attenuation: 1,
+        loop: true,
+        loopStart: 0,
+        loopEnd: BasicWaveBank.NOISE_PCM.length,
+        rootKey: 114, // 117 in nitro-fs
+        fineTune: 0,
+        ignoreKey: false,
       };
       return voice;
     } else {
@@ -380,10 +379,12 @@ export class NDSInstrumentBank implements InstrumentBank {
     return (ticks * NDSInstrumentBank.TICK_INTERVAL_MS) / 1000;
   }
 
-  static getFallRate(raw: number){
+  static getFallRate(raw: number) {
     const fallRate = NDSInstrumentBank.convertFall(raw);
     // 毎tick `fallRate` ずつ減衰する
-    return NDSInstrumentBank.convertVolume2(fallRate / (NDSInstrumentBank.TICK_INTERVAL_MS / 1000));
+    return NDSInstrumentBank.convertVolume2(
+      fallRate / (NDSInstrumentBank.TICK_INTERVAL_MS / 1000),
+    );
   }
 
   /*

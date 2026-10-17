@@ -4,11 +4,13 @@
  * portamento glides, envelopes, and modulations across all sound sources.
  */
 
-import type { InstrumentRegistry } from '../banks/InstrumentRegistry.js';
-import type { PreparedNote, ADSRParams } from '../types.js';
-import { midiNoteToFrequency, convertSmileBASICEnvelope } from '../utils/conversion.js';
-import { EnvelopeHelper } from './EnvelopeHelper.js';
-import { ModulationHelper } from './ModulationHelper.js';
+import type { PreparedNote, ADSRParams, VoiceData } from "../types.js";
+import {
+  midiNoteToFrequency,
+  convertSmileBASICEnvelope,
+} from "../utils/conversion.js";
+import { EnvelopeHelper } from "./EnvelopeHelper.js";
+import { ModulationHelper } from "./ModulationHelper.js";
 
 interface ActiveVoiceRecord {
   channel: number;
@@ -28,7 +30,6 @@ interface ChannelStrip {
 export class SynthEngine {
   public readonly ctx: AudioContext;
   public readonly masterGain: GainNode;
-  public readonly registry: InstrumentRegistry;
 
   // Track active voices for volume changes and immediate stops
   private activeVoices: Set<ActiveVoiceRecord> = new Set();
@@ -42,12 +43,14 @@ export class SynthEngine {
   // PeriodicWave cache
   private periodicWaveCache: Map<string, PeriodicWave> = new Map();
 
-  constructor(registry: InstrumentRegistry, ctx?: AudioContext) {
-    this.ctx = ctx || new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
+  constructor() {
+    this.ctx =
+      new (window.AudioContext ||
+        (window as unknown as { webkitAudioContext: typeof AudioContext })
+          .webkitAudioContext)();
     this.masterGain = this.ctx.createGain();
     this.masterGain.gain.setValueAtTime(0.8, this.ctx.currentTime);
     this.masterGain.connect(this.ctx.destination);
-    this.registry = registry;
   }
 
   /**
@@ -90,7 +93,7 @@ export class SynthEngine {
    * Resume audio context if suspended by browser autoplay policy
    */
   public async ensureContextRunning(): Promise<void> {
-    if (this.ctx.state === 'suspended') {
+    if (this.ctx.state === "suspended") {
       await this.ctx.resume();
     }
   }
@@ -113,15 +116,13 @@ export class SynthEngine {
   /**
    * Play a prepared note event at the scheduled time
    */
-  public playNote(
+  public async playNote(
+    voiceData: VoiceData,
     note: PreparedNote,
     startTime: number,
     durationSec: number,
-    gateDurationSec: number
-  ): void {
-    const voiceData = this.registry.getVoice(note.program, note.noteNumber, note.velocity);
-    if (!voiceData) return;
-
+    gateDurationSec: number,
+  ): Promise<void> {
     // 1. Resolve envelope (SmileBASIC @E override or bank default)
     const envelope: ADSRParams = note.envelope.enabled
       ? convertSmileBASICEnvelope(note.envelope)
@@ -165,7 +166,9 @@ export class SynthEngine {
       isPortamento: false,
     }];
 
-    if (voiceData.kind === 'sample') {
+    switch (voiceData.kind) {
+      case "sample":
+      case "noise": {
       const src = this.ctx.createBufferSource();
       src.buffer = this.getOrCreateAudioBuffer(voiceData.pcm, voiceData.sampleRate);
 
@@ -182,13 +185,15 @@ export class SynthEngine {
         const segEndTime = segStartTime + segDuration;
 
         // Set pitch
-        const startRate = getPlaybackRate(seg.noteNumber, seg.detuneCents);
-        src.playbackRate.setValueAtTime(startRate, segStartTime);
+        if (!voiceData.ignoreKey) {
+          const startRate = getPlaybackRate(seg.noteNumber, seg.detuneCents);
+          src.playbackRate.setValueAtTime(startRate, segStartTime);
 
-        if (seg.isPortamento && seg.portamentoTargetNote !== undefined) {
-          const targetDetune = seg.portamentoTargetDetuneCents ?? seg.detuneCents;
-          const targetRate = getPlaybackRate(seg.portamentoTargetNote, targetDetune);
-          src.playbackRate.linearRampToValueAtTime(targetRate, segEndTime);
+          if (seg.isPortamento && seg.portamentoTargetNote !== undefined) {
+            const targetDetune = seg.portamentoTargetDetuneCents ?? seg.detuneCents;
+            const targetRate = getPlaybackRate(seg.portamentoTargetNote, targetDetune);
+            src.playbackRate.linearRampToValueAtTime(targetRate, segEndTime);
+          }
         }
 
         // Schedule mid-compound parameter changes (V, P)
@@ -199,12 +204,12 @@ export class SynthEngine {
         }
       }
 
-      // Looping
-      if (voiceData.loop) {
-        src.loop = true;
-        src.loopStart = voiceData.loopStart / voiceData.sampleRate;
-        src.loopEnd = voiceData.loopEnd / voiceData.sampleRate;
-      }
+        // Looping
+        if (voiceData.loop) {
+          src.loop = true;
+          src.loopStart = voiceData.loopStart / voiceData.sampleRate;
+          src.loopEnd = voiceData.loopEnd / voiceData.sampleRate;
+        }
 
       // Optional SF2 filter
       if (voiceData.filter) {
@@ -217,13 +222,19 @@ export class SynthEngine {
         src.connect(envelopeGain);
       }
 
-      sourceNode = src;
-    } else if (voiceData.kind === 'periodic') {
-      const osc = this.ctx.createOscillator();
-      const wave = this.getOrCreatePeriodicWave(voiceData.duty, voiceData.real, voiceData.imag);
-      osc.setPeriodicWave(wave);
+        sourceNode = src;
+        break;
+      } 
+      case "periodic": {
+        const osc = this.ctx.createOscillator();
+        const wave = this.getOrCreatePeriodicWave(
+          voiceData.id,
+          voiceData.real,
+          voiceData.imag,
+        );
+        osc.setPeriodicWave(wave);
 
-      // Schedule segments for periodic oscillator voice
+        // Schedule segments for periodic oscillator voice
       for (let i = 0; i < segments.length; i++) {
         const seg = segments[i];
         const segStartTime = startTime + (seg.startTimeOffsetSec ?? 0);
@@ -231,12 +242,12 @@ export class SynthEngine {
         const segEndTime = segStartTime + segDuration;
 
         // Set pitch
-        const startFreq = midiNoteToFrequency(seg.noteNumber, seg.detuneCents);
+        const startFreq = midiNoteToFrequency(seg.noteNumber + (voiceData.keyShift ?? 0), seg.detuneCents);
         osc.frequency.setValueAtTime(startFreq, segStartTime);
 
         if (seg.isPortamento && seg.portamentoTargetNote !== undefined) {
           const targetDetune = seg.portamentoTargetDetuneCents ?? seg.detuneCents;
-          const targetFreq = midiNoteToFrequency(seg.portamentoTargetNote, targetDetune);
+          const targetFreq = midiNoteToFrequency(seg.portamentoTargetNote + (voiceData.keyShift ?? 0), targetDetune);
           osc.frequency.linearRampToValueAtTime(targetFreq, segEndTime);
         }
 
@@ -248,25 +259,10 @@ export class SynthEngine {
         }
       }
 
-      osc.connect(envelopeGain);
-      sourceNode = osc;
-    } else {
-      // Noise
-      const noiseSrc = this.ctx.createBufferSource();
-      noiseSrc.buffer = this.getOrCreateAudioBuffer(voiceData.pcm, voiceData.sampleRate);
-      noiseSrc.loop = true;
-
-      // Schedule mid-compound parameter changes (V, P)
-      for (let i = 1; i < segments.length; i++) {
-        const seg = segments[i];
-        const segStartTime = startTime + (seg.startTimeOffsetSec ?? 0);
-        velocityGain.gain.setValueAtTime((seg.velocity / 127) * effectiveAtten, segStartTime);
-        const reqPan = (seg.pan - 64) / 64;
-        panNode.pan.setValueAtTime(Math.max(-1.0, Math.min(1.0, basePan + reqPan)), segStartTime);
+        osc.connect(envelopeGain);
+        sourceNode = osc;
+        break;
       }
-
-      noiseSrc.connect(envelopeGain);
-      sourceNode = noiseSrc;
     }
 
     // 4. Schedule ADSR envelope on normalized EnvelopeGain (peak = 1.0)
@@ -294,7 +290,7 @@ export class SynthEngine {
         panNode.pan,
         note.modulation,
         startTime,
-        stopTime
+        stopTime,
       );
       if (attached) lfoNode = attached;
     }
@@ -342,7 +338,10 @@ export class SynthEngine {
     this.activeVoices.clear();
   }
 
-  private getOrCreateAudioBuffer(pcm: Float32Array, sampleRate: number): AudioBuffer {
+  private getOrCreateAudioBuffer(
+    pcm: Float32Array,
+    sampleRate: number,
+  ): AudioBuffer {
     let buf = this.audioBufferCache.get(pcm);
     if (!buf) {
       buf = this.ctx.createBuffer(1, pcm.length, sampleRate);
@@ -353,15 +352,16 @@ export class SynthEngine {
   }
 
   private getOrCreatePeriodicWave(
-    duty: number,
+    id: string,
     real: Float32Array,
-    imag: Float32Array
+    imag: Float32Array,
   ): PeriodicWave {
-    const key = `${duty}`;
-    let wave = this.periodicWaveCache.get(key);
+    let wave = this.periodicWaveCache.get(id);
     if (!wave) {
-      wave = this.ctx.createPeriodicWave(real, imag, { disableNormalization: false });
-      this.periodicWaveCache.set(key, wave);
+      wave = this.ctx.createPeriodicWave(real, imag, {
+        disableNormalization: false,
+      });
+      this.periodicWaveCache.set(id, wave);
     }
     return wave;
   }

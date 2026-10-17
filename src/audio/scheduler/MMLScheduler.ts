@@ -6,7 +6,7 @@
  */
 
 import type { SynthEngine } from "../synth/SynthEngine.js";
-import type { PreparedEvent, PreparedNote, NoteSegment } from "../types.js";
+import type { PreparedEvent, PreparedNote, NoteSegment, VoiceData } from "../types.js";
 import type { MMLEvent, NoteEvent } from "../../parser/types.js";
 import {
   MMLChannelParser,
@@ -16,6 +16,7 @@ import {
 import { sbDetuneToCents } from "../utils/conversion.js";
 import { TempoMap } from "./TempoMap.js";
 import type { VisualizerNote } from "../../components/NoteVisualizer.js";
+import type { InstrumentBank } from "../banks/InstrumentBank.js";
 
 interface PendingCompound {
   startTick: number;
@@ -37,6 +38,7 @@ interface ChannelState {
 
 export class MMLScheduler {
   private synth: SynthEngine;
+  private instrumentBanks: InstrumentBank[];
   private tempoMap: TempoMap;
   public onError: (e: unknown) => void;
   public readonly ticksPerWholeNote: number;
@@ -81,13 +83,19 @@ export class MMLScheduler {
   ) => void;
   public onEnded?: () => void;
 
+  setInstrumentBanks(banks: InstrumentBank[]){
+    this.instrumentBanks = banks;
+  }
+
   constructor(
     synth: SynthEngine,
+    banks: InstrumentBank[],
     mml: string,
     ticksPerWholeNote: number = 192,
     onError: (e: unknown) => void,
   ) {
     this.synth = synth;
+    this.instrumentBanks = banks;
     this.ticksPerWholeNote = ticksPerWholeNote;
     this.onError = onError;
     this.tempoMap = new TempoMap([], ticksPerWholeNote);
@@ -104,7 +112,6 @@ export class MMLScheduler {
           channels[ch],
           mml,
           initialKeyShift,
-          ticksPerWholeNote,
         );
         const generator = parser.nextEvent();
         const nextResult = generator.next();
@@ -333,6 +340,9 @@ export class MMLScheduler {
     if (event.type === "end") {
       this.flushChannel(state);
       state.isFinished = true;
+      if (event.error) {
+        this.onError(event.error);
+      }
       return;
     }
 
@@ -587,7 +597,8 @@ export class MMLScheduler {
     this.nextEventIndex = 0;
     while (
       this.nextEventIndex < this.events.length &&
-      this.getEventTime(this.events[this.nextEventIndex]) < this.playbackOffsetSeconds
+      this.getEventTime(this.events[this.nextEventIndex]) <
+        this.playbackOffsetSeconds
     ) {
       this.nextEventIndex++;
     }
@@ -650,7 +661,8 @@ export class MMLScheduler {
     this.nextEventIndex = 0;
     while (
       this.nextEventIndex < this.events.length &&
-      this.getEventTime(this.events[this.nextEventIndex]) < this.playbackOffsetSeconds
+      this.getEventTime(this.events[this.nextEventIndex]) <
+        this.playbackOffsetSeconds
     ) {
       this.nextEventIndex++;
     }
@@ -682,7 +694,7 @@ export class MMLScheduler {
   }
 
   private startSchedulerLoop(): void {
-    const tickLoop = () => {
+    const tickLoop = async () => {
       if (!this.isPlaying) return;
 
       const currentAudioTime = this.synth.currentTime;
@@ -708,11 +720,12 @@ export class MMLScheduler {
         const targetAudioTime = this.playbackStartAudioTime + eventSec;
 
         if (ev.type === "note") {
-          try {
-            this.scheduleNote(ev.event, targetAudioTime);
-          } catch (e) {
+          // TODO: 並列化
+          // awaitを外せば並列化できるが、SF2InstrumentBankのOggVorbisDecoderの出力が壊れた。要検証
+          // そもそも並列化する必要があるかどうかも要検証
+          await this.scheduleNote(ev.event, targetAudioTime).catch((e) => {
             this.onError(e);
-          }
+          });
         } else if (ev.type === "volume") {
           this.synth.setChannelVolume(ev.channel, ev.volume, targetAudioTime);
         }
@@ -741,7 +754,10 @@ export class MMLScheduler {
     window.setTimeout(tickLoop, 0);
   }
 
-  private scheduleNote(note: PreparedNote, audioTime: number): void {
+  private async scheduleNote(
+    note: PreparedNote,
+    audioTime: number,
+  ): Promise<void> {
     const durationSec = this.tempoMap.durationTicksToSeconds(
       note.tick,
       note.duration,
@@ -763,12 +779,29 @@ export class MMLScheduler {
       );
     }
 
-    this.synth.playNote(
-      note,
-      Math.max(this.synth.currentTime, audioTime),
-      durationSec,
-      gateDurationSec,
-    );
+    let voiceData: VoiceData | null = null;
+    if (this.instrumentBanks.length === 0) {
+      throw new Error("音源データが読み込まれていません");
+    }
+    for (const bank of this.instrumentBanks) {
+      voiceData = await bank.getVoice(
+        note.program,
+        note.noteNumber,
+        note.velocity,
+      );
+      if (voiceData) break;
+    }
+    if (voiceData) {
+      await this.synth.playNote(
+        voiceData,
+        note,
+        Math.max(this.synth.currentTime, audioTime),
+        durationSec,
+        gateDurationSec,
+      );
+    } else {
+      throw new Error(`@${note.program} に対応する音源が見つかりません`);
+    }
   }
 
   private getEventTime(ev: PreparedEvent): number {

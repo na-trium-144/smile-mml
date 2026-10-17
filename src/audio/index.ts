@@ -8,7 +8,6 @@ export type {
   ADSRParams,
   SampleVoiceData,
   PeriodicVoiceData,
-  NoiseVoiceData,
   VoiceData,
   PreparedNote,
   PreparedEvent,
@@ -16,8 +15,7 @@ export type {
 
 // Instrument banks
 export type { InstrumentBank } from './banks/InstrumentBank.js';
-export { InstrumentRegistry } from './banks/InstrumentRegistry.js';
-export { PSGInstrumentBank } from './banks/PSGInstrumentBank.js';
+export { BasicWaveBank } from './banks/BasicWaveBank.js';
 export { SF2InstrumentBank } from './banks/SF2InstrumentBank.js';
 export { NDSInstrumentBank } from './banks/NDSInstrumentBank.js';
 
@@ -38,5 +36,5 @@ export {
   centibelsToGain,
   resolveModulationConfig,
 } from './utils/conversion.js';
-export { generateLFSRNoise, generateWhiteNoise } from './utils/noiseGenerator.js';
+export { generateWhiteNoise } from './utils/noiseGenerator.js';
 export { generateSquareWaveHarmonics, PSG_DUTY_CYCLES } from './utils/waveformGenerator.js';

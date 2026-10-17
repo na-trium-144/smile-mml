@@ -12,24 +12,32 @@ import {
   useCallback,
   type ReactNode,
   type FC,
+  useEffect,
+  useMemo,
 } from "react";
-import { InstrumentRegistry } from "../audio/banks/InstrumentRegistry.js";
 import { SF2InstrumentBank } from "../audio/banks/SF2InstrumentBank.js";
 import { NDSInstrumentBank } from "../audio/banks/NDSInstrumentBank.js";
+import clsx from "clsx";
+import { BasicWaveBank, type InstrumentBank } from "../audio/index.js";
+
+const presetSF2Names = ["GeneralUser GS", "FluidR3 GM"] as const;
 
 interface InstrumentContextValue {
-  registry: InstrumentRegistry;
+  currentBanks: InstrumentBank[];
   sf2Name: string | null;
+  sf2IsPreset: boolean;
   ndsName: string | null;
   ndsSdats: string[];
   selectedNdsSdat: string;
   loadingAsset: string | null;
   loadError: string | null;
-  loadSF2: (file: File) => Promise<void>;
+  loadSF2: (file: File | (typeof presetSF2Names)[number]) => Promise<void>;
   loadNDS: (file: File) => Promise<void>;
+  sf2Bank: SF2InstrumentBank | null;
+  ndsBank: NDSInstrumentBank | null;
   selectSdat: (path: string) => void;
   bankSelected: "sf2" | "nds";
-  selectBank: (bank: "sf2" | "nds") => void;
+  setBankSelected: (bank: "sf2" | "nds") => void;
 }
 
 const InstrumentContext = createContext<InstrumentContextValue | null>(null);
@@ -47,28 +55,23 @@ export function useInstrumentContext(): InstrumentContextValue {
 export const InstrumentProvider: FC<{ children: ReactNode }> = ({
   children,
 }) => {
-  const registryRef = useRef<InstrumentRegistry>(new InstrumentRegistry());
   const ndsBufferRef = useRef<ArrayBuffer | null>(null);
 
   const [bankSelected, setBankSelected] = useState<"sf2" | "nds">("sf2");
-  const selectBank = useCallback((bank: "sf2" | "nds") => {
-    switch (bank) {
-      case "sf2":
-        if (sf2BankRef.current) {
-          registryRef.current.register(sf2BankRef.current);
-        }
-        break;
-      case "nds":
-        if (ndsBankRef.current) {
-          registryRef.current.register(ndsBankRef.current);
-        }
-        break;
+  // set時には前のbankをdisposeする
+  const [sf2Bank, setSf2Bank] = useState<SF2InstrumentBank | null>(null);
+  const [ndsBank, setNdsBank] = useState<NDSInstrumentBank | null>(null);
+  const currentBanks = useMemo<InstrumentBank[]>(() => {
+    if (bankSelected === "sf2" && sf2Bank) {
+      return [new BasicWaveBank(), sf2Bank];
     }
-    setBankSelected(bank);
-  }, []);
-  const sf2BankRef = useRef<SF2InstrumentBank | null>(null);
-  const ndsBankRef = useRef<NDSInstrumentBank | null>(null);
+    if (bankSelected === "nds" && ndsBank) {
+      return [ndsBank];
+    }
+    return [];
+  }, [bankSelected, sf2Bank, ndsBank]);
 
+  const [sf2IsPreset, setSf2IsPreset] = useState<boolean>(false);
   const [sf2Name, setSf2Name] = useState<string | null>(null);
   const [ndsName, setNdsName] = useState<string | null>(null);
   const [ndsSdats, setNdsSdats] = useState<string[]>([]);
@@ -76,33 +79,63 @@ export const InstrumentProvider: FC<{ children: ReactNode }> = ({
   const [loadingAsset, setLoadingAsset] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
 
-  const loadSF2 = useCallback(async (file: File) => {
-    setLoadingAsset("SF2");
-    setLoadError(null);
-    setBankSelected("sf2");
-    try {
-      const buffer = await file.arrayBuffer();
-      sf2BankRef.current = new SF2InstrumentBank(file.name);
-      await sf2BankRef.current.load(buffer);
-      registryRef.current.register(sf2BankRef.current);
-      setSf2Name(file.name);
-    } catch (err) {
-      console.error("SF2 load error:", err);
-      setLoadError(
-        `SF2 読み込みエラー: ${err instanceof Error ? err.message : String(err)}`,
-      );
-    } finally {
-      setLoadingAsset(null);
-    }
-  }, []);
+  const generalUserGS = useRef<ArrayBuffer | null>(null);
+  const fluidR3GM = useRef<ArrayBuffer | null>(null);
+
+  const loadSF2 = useCallback(
+    async (file: File | (typeof presetSF2Names)[number]) => {
+      setLoadingAsset("SF2");
+      setLoadError(null);
+      setBankSelected("sf2");
+      let sf2Bank: SF2InstrumentBank;
+      try {
+        if (file === "GeneralUser GS") {
+          if (!generalUserGS.current) {
+            throw new Error("generalUserGS.current is null");
+          }
+          sf2Bank = new SF2InstrumentBank("GeneralUser GS");
+          await sf2Bank.load(generalUserGS.current);
+          setSf2IsPreset(true);
+        } else if (file === "FluidR3 GM") {
+          if (!fluidR3GM.current) {
+            throw new Error("fluidR3GM.current is null");
+          }
+          sf2Bank = new SF2InstrumentBank("FluidR3 GM");
+          await sf2Bank.load(fluidR3GM.current);
+          setSf2IsPreset(true);
+        } else {
+          const buffer = await file.arrayBuffer();
+          sf2Bank = new SF2InstrumentBank(file.name);
+          await sf2Bank.load(buffer);
+          setSf2IsPreset(false);
+        }
+        setSf2Name(sf2Bank.name);
+        setSf2Bank((prev) => {
+          prev?.dispose();
+          return sf2Bank;
+        });
+      } catch (err) {
+        console.error("SF2 load error:", err);
+        setLoadError(
+          `SF2 読み込みエラー: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      } finally {
+        setLoadingAsset(null);
+      }
+    },
+    [],
+  );
 
   const selectSdat = useCallback((path: string) => {
     if (ndsBufferRef.current && path) {
-      ndsBankRef.current = new NDSInstrumentBank(ndsBufferRef.current, path);
-      registryRef.current.register(ndsBankRef.current);
+      const ndsBank = new NDSInstrumentBank(ndsBufferRef.current, ndsName ?? "", path);
       setSelectedNdsSdat(path);
+      setNdsBank((prev) => {
+        prev?.dispose();
+        return ndsBank;
+      });
     }
-  }, []);
+  }, [ndsName]);
 
   const loadNDS = useCallback(async (file: File) => {
     setLoadingAsset("NDS ROM");
@@ -115,12 +148,12 @@ export const InstrumentProvider: FC<{ children: ReactNode }> = ({
       setNdsSdats(sdats);
       setSelectedNdsSdat(sdats[0]);
       // Register first SDAT immediately
-      ndsBankRef.current = new NDSInstrumentBank(
-        ndsBufferRef.current,
-        sdats[0],
-      );
-      registryRef.current.register(ndsBankRef.current);
+      const ndsBank = new NDSInstrumentBank(ndsBufferRef.current, file.name, sdats[0]);
       setNdsName(file.name);
+      setNdsBank((prev) => {
+        prev?.dispose();
+        return ndsBank;
+      });
     } catch (err) {
       console.error("NDS ROM load error:", err);
       setLoadError(
@@ -131,9 +164,32 @@ export const InstrumentProvider: FC<{ children: ReactNode }> = ({
     }
   }, []);
 
+  useEffect(() => {
+    async function decompressIfNecessary(res: Response) {
+      const reader = res.clone().body!.getReader();
+      const { value } = await reader.read();
+      reader.cancel();
+      if (value && value[0] === 0x1f && value[1] === 0x8b) {
+        const ds = new DecompressionStream("gzip");
+        const decompressedStream = (await res.blob()).stream().pipeThrough(ds);
+        return new Response(decompressedStream).arrayBuffer();
+      } else {
+        return res.arrayBuffer();
+      }
+    }
+    fetch("/GeneralUser-GS.sf3.gz").then(async (res) => {
+      generalUserGS.current = await decompressIfNecessary(res);
+      loadSF2("GeneralUser GS");
+    });
+    fetch("/FluidR3_GM.sf3.gz").then(async (res) => {
+      fluidR3GM.current = await decompressIfNecessary(res);
+    });
+  }, [loadSF2]);
+
   const value: InstrumentContextValue = {
-    registry: registryRef.current,
+    currentBanks,
     sf2Name,
+    sf2IsPreset,
     ndsName,
     ndsSdats,
     selectedNdsSdat,
@@ -141,9 +197,11 @@ export const InstrumentProvider: FC<{ children: ReactNode }> = ({
     loadError,
     loadSF2,
     loadNDS,
+    sf2Bank,
+    ndsBank,
     selectSdat,
     bankSelected,
-    selectBank,
+    setBankSelected,
   };
 
   return (
@@ -156,6 +214,7 @@ export const InstrumentProvider: FC<{ children: ReactNode }> = ({
 export function InstrumentSelect() {
   const {
     sf2Name,
+    sf2IsPreset,
     ndsName,
     ndsSdats,
     selectedNdsSdat,
@@ -165,13 +224,24 @@ export function InstrumentSelect() {
     loadNDS,
     selectSdat,
     bankSelected,
-    selectBank,
+    setBankSelected,
   } = useInstrumentContext();
 
   return (
     <details className="collapse collapse-card-like collapse-arrow collapse-card-like-border">
-      <summary className="collapse-title collapse-card-like-title">
+      <summary className="collapse-title collapse-card-like-title flex justify-between items-center">
         <h2>音源設定</h2>
+        {bankSelected === "sf2"
+          ? sf2Name && (
+              <div>
+                <span className="badge badge-success badge-sm">{sf2Name}</span>
+                <span className="mx-1 text-sm">+</span>
+                <span className="badge badge-warning badge-sm">波形生成</span>
+              </div>
+            )
+          : ndsName && (
+              <div className="badge badge-accent badge-sm">{ndsName}</div>
+            )}
       </summary>
       <div className="collapse-content flex flex-col">
         <div className="tabs tabs-border mb-2 -mt-3">
@@ -179,11 +249,11 @@ export function InstrumentSelect() {
             type="radio"
             name="InstrumentSelect"
             className="tab"
-            aria-label="SF2 + PSG"
+            aria-label="SF2 + 波形生成"
             checked={bankSelected === "sf2"}
             onChange={(e) => {
               if (e.target.checked) {
-                selectBank("sf2");
+                setBankSelected("sf2");
               }
             }}
           />
@@ -195,7 +265,7 @@ export function InstrumentSelect() {
             checked={bankSelected === "nds"}
             onChange={(e) => {
               if (e.target.checked) {
-                selectBank("nds");
+                setBankSelected("nds");
               }
             }}
           />
@@ -204,56 +274,86 @@ export function InstrumentSelect() {
         {/* SF2 */}
         {bankSelected === "sf2" ? (
           <>
-            <div key="sf2" className="flex items-center gap-2 mb-2">
-              <span className="">SoundFont (.sf2 / .sf3)</span>
-              <label
-                htmlFor="SF2InstrumentInput"
-                className="btn btn-info btn-sm"
-              >
-                ファイルを選択...
-              </label>
-              <input
-                type="file"
-                id="SF2InstrumentInput"
-                className="hidden"
-                accept=".sf2,.SF2"
-                disabled={loadingAsset !== null}
+            <div key="sf2" className="flex flex-wrap items-center gap-2 mb-2">
+              <span className="">サウンドフォント (.sf2 / .sf3) を選択</span>
+              <select
+                className="select select-success select-sm w-max"
+                value={sf2IsPreset && sf2Name ? sf2Name : ""}
                 onChange={(e) => {
-                  if (e.target.files?.[0]) {
-                    loadSF2(e.target.files[0]);
+                  if (
+                    (presetSF2Names as Readonly<string[]>).includes(
+                      e.target.value,
+                    )
+                  ) {
+                    loadSF2(e.target.value as (typeof presetSF2Names)[number]);
                   }
                 }}
-              />
-              {sf2Name && (
-                <div className="badge badge-success badge-sm">
-                  ✓ {sf2Name}
-                </div>
-              )}
+              >
+                <option disabled value="">
+                  デフォルト音源から選択...
+                </option>
+                {presetSF2Names.map((name) => (
+                  <option key={name} value={name}>
+                    {name}
+                  </option>
+                ))}
+              </select>
+              <span>または</span>
+              <div className={clsx(!sf2IsPreset && sf2Name && "join")}>
+                <label
+                  htmlFor="SF2InstrumentInput"
+                  className={clsx(
+                    "btn btn-success btn-sm",
+                    !sf2IsPreset && sf2Name && "join-item",
+                  )}
+                >
+                  ファイルを読み込む...
+                </label>
+                <input
+                  type="file"
+                  id="SF2InstrumentInput"
+                  className="hidden"
+                  accept=".sf2,.sf3"
+                  disabled={loadingAsset !== null}
+                  onChange={(e) => {
+                    if (e.target.files?.[0]) {
+                      loadSF2(e.target.files[0]);
+                    }
+                  }}
+                />
+                {!sf2IsPreset && sf2Name && (
+                  <input
+                    className="input input-sm join-item"
+                    value={sf2Name}
+                    readOnly
+                  />
+                )}
+              </div>
             </div>
             <p className="mb-2 text-paragraph text-xs">
               ファイルをドラッグ&ドロップで読み込むこともできます。
             </p>
-            <div className="text-sm">
-              <span className="text-sb3-label">@144</span> 〜{" "}
-              <span className="text-sb3-label">@151</span> には{" "}
-              <span className="badge badge-sm badge-warning">PSG音源</span>{" "}
-              が生成されます。
-            </div>
+            <SF2InstrumentTable />
           </>
         ) : (
           <>
-            <div key="nds" className="flex items-center gap-2 mb-2">
-              <span className="">NDS ROM (.nds / .sdat)</span>
+            <div key="nds" className="flex flex-wrap items-center gap-2 mb-2">
+              <span className="">NDS ROM (.nds / .sdat) を選択</span>
+              <div className={clsx(ndsName && "join")}>
               <label
                 htmlFor="NDSInstrumentInput"
-                className="btn btn-accent btn-sm"
+                className={clsx(
+                    "btn btn-accent btn-sm",
+                    ndsName && "join-item",
+                  )}
               >
-                ファイルを選択...
+                ファイルを読み込む...
               </label>
               <input
                 type="file"
+                id="NDSInstrumentInput"
                 className="hidden"
-                accept=".nds,.NDS,.sdat,.SDAT"
+                accept=".nds,.sdat"
                 disabled={loadingAsset !== null}
                 onChange={(e) => {
                   if (e.target.files?.[0]) {
@@ -262,13 +362,15 @@ export function InstrumentSelect() {
                 }}
               />
               {ndsName && (
-                <div className="badge badge-success badge-sm">
-                  ✓ {ndsName}
-                </div>
-              )}
+                  <input
+                    className="input input-sm join-item"
+                    value={ndsName}
+                    readOnly
+                  />
+                )}
               {ndsSdats.length >= 1 && (
                 <select
-                  className="select select-sm w-max"
+                  className="select select-sm"
                   value={selectedNdsSdat}
                   onChange={(e) => selectSdat(e.target.value)}
                 >
@@ -279,6 +381,7 @@ export function InstrumentSelect() {
                   ))}
                 </select>
               )}
+            </div>
             </div>
             <p className="mb-2 text-paragraph text-xs">
               ファイルをドラッグ&ドロップで読み込むこともできます。
@@ -302,5 +405,164 @@ export function InstrumentSelect() {
         )}
       </div>
     </details>
+  );
+}
+
+function SF2InstrumentTable() {
+  const { sf2Bank } = useInstrumentContext();
+  const sf2Programs = sf2Bank?.getAllPrograms() ?? [];
+  type HiddenPresetMapped =
+    | ({ program: number; pSf2?: (typeof sf2Programs)[number] } & ReturnType<
+        typeof SF2InstrumentBank.resolveBankPreset
+      >)
+    | ReturnType<typeof BasicWaveBank.allPrograms>[number];
+  const hiddenPresetMapped: HiddenPresetMapped[] = [
+    ...SF2InstrumentBank.sb3HiddenPresets
+      .map((program) => ({
+        program,
+        ...SF2InstrumentBank.resolveBankPreset(program),
+      }))
+      .map((pMap) => ({
+        ...pMap,
+        pSf2: sf2Programs.find(
+          (pSf2) =>
+            pSf2.bank === (pMap.bank ?? 0) && pSf2.preset === pMap.preset,
+        ),
+      })),
+    ...BasicWaveBank.allPrograms(),
+  ];
+  hiddenPresetMapped.sort((a, b) => a.program - b.program);
+  return (
+    <>
+      <p className="my-1 text-paragraph text-sm">
+        <span className="text-sb3-label">@0</span> 〜{" "}
+        <span className="text-sb3-label">@127</span> はGM音源と同一です。{" "}
+        <span className="text-sb3-label">@128</span>{" "}
+        以降の隠し音源はGM音源の近い音色またはドラムセットで置き換えています。
+        (BEEP音など置き換え先を用意していない音色もあります。)
+      </p>
+      <p className="my-1 text-paragraph text-sm">
+        PSG音源、ノイズ、ノコギリ波、サイン波
+        はサウンドフォントを使わずに生成します。
+      </p>
+      <p className="my-1 text-paragraph text-sm">
+        SmileMML 独自の拡張として <span className="text-sb3-label">@131</span>{" "}
+        〜 <span className="text-sb3-label">@143</span>{" "}
+        にGM2標準のドラムセットを、 <span className="text-sb3-label">@159</span>{" "}
+        に プチコンmkII 仕様のノイズを追加しています。 また、{" "}
+        <span className="text-sb3-label">
+          @ バンク番号 × 1000 + プリセット番号
+        </span>{" "}
+        でSF2音源に含まれるその他の非標準の音色を使用できます。
+      </p>
+      <h3 className="mt-2">使用可能な音色一覧</h3>
+      <div className="tabs tabs-border tabs-sm">
+        <label className="tab">
+          <input type="radio" name="SF2InstrumentTable" defaultChecked />
+          @0 〜 @127 (GM音源)
+        </label>
+        <div className="tab-content bg-base-100 rounded-field">
+          <table className="table table-xs text-center">
+            <thead>
+              <tr>
+                <th>音色番号</th>
+                <th>名前</th>
+              </tr>
+            </thead>
+            <tbody>
+              {sf2Programs.map(
+                ({ program, name }) =>
+                  program < 128 && (
+                    <tr key={program}>
+                      <th className="text-sb3-label">@{program}</th>
+                      <td className="text-success-content">{name}</td>
+                    </tr>
+                  ),
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        <label className="tab">
+          <input type="radio" name="SF2InstrumentTable" />
+          @128 〜 (ドラム / 隠し音源)
+        </label>
+        <div className="tab-content bg-base-100 rounded-field">
+          <table className="table table-xs text-center">
+            <thead>
+              <tr>
+                <th>音色番号</th>
+                <th>置き換え先</th>
+                <th>名前</th>
+                <th>備考</th>
+              </tr>
+            </thead>
+            <tbody>
+              {hiddenPresetMapped.map((p) =>
+                "pSf2" in p && p.pSf2 ? (
+                  <tr key={p.program}>
+                    <th className="text-sb3-label">@{p.program}</th>
+                    <td className="text-success-content">@{p.pSf2.program}</td>
+                    <td className="text-success-content">{p.pSf2.name} </td>
+                    <td>
+                      {p.keyShift &&
+                        `キー ${p.keyShift.toLocaleString("en", {
+                          signDisplay: "always",
+                          useGrouping: false,
+                        })}`}
+                    </td>
+                  </tr>
+                ) : (
+                  "type" in p && (
+                    <tr key={p.program}>
+                      <th className="text-sb3-label">@{p.program}</th>
+                      <td className="text-warning-content"></td>
+                      <td className="text-warning-content">{p.name}</td>
+                      <td>
+                        {p.ignoreKey && "キー固定"}
+                        {p.keyShift &&
+                          `キー ${p.keyShift.toLocaleString("en", {
+                            signDisplay: "always",
+                            useGrouping: false,
+                          })}`}
+                      </td>
+                    </tr>
+                  )
+                ),
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        <label className="tab">
+          <input type="radio" name="SF2InstrumentTable" />
+          @1000 〜 (SF2 バンク指定)
+        </label>
+        <div className="tab-content bg-base-100 rounded-field">
+          <table className="table table-xs text-center">
+            <thead>
+              <tr>
+                <th>音色番号</th>
+                <th>名前</th>
+              </tr>
+            </thead>
+            <tbody>
+              {sf2Bank?.getAllPrograms().map(
+                ({ program, name }) =>
+                  program >= 1000 && (
+                    <tr key={program}>
+                      <th className="text-sb3-label">
+                        @ {Math.floor(program / 1000)}{" "}
+                        {(program % 1000).toString().padStart(3, "0")}
+                      </th>
+                      <td className="text-success-content">{name}</td>
+                    </tr>
+                  ),
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </>
   );
 }

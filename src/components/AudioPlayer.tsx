@@ -28,7 +28,7 @@ const formatTime = (sec: number) => {
 };
 
 export function AudioPlayer() {
-  const { registry } = useInstrumentContext();
+  const { currentBanks } = useInstrumentContext();
   const { currentFile } = usePlaylist();
   const { content: mml } = currentFile;
   
@@ -36,8 +36,7 @@ export function AudioPlayer() {
   const [currentTime, setCurrentTime] = useState(0);
   const [totalTime, setTotalTime] = useState(0);
   const [activeChannels, setActiveChannels] = useState<number[]>([]);
-  const [error, setError] = useState<string | null>(null);
-  const [schedulerError, setSchedulerError] = useState<string[]>([]);
+  const [errors, setErrors] = useState<string[]>([]);
 
   // Track last-parsed MML to recreate scheduler if MML text changes
   const lastParsedMml = useRef("");
@@ -45,6 +44,17 @@ export function AudioPlayer() {
 
   const synthRef = useRef<SynthEngine | null>(null);
   const schedulerRef = useRef<MMLScheduler | null>(null);
+
+  const getSynth = useCallback(() => {
+    if (!synthRef.current) {
+      synthRef.current = new SynthEngine();
+    }
+    return synthRef.current;
+  }, []);
+
+  useEffect(() => {
+    schedulerRef.current?.setInstrumentBanks(currentBanks);
+  }, [currentBanks])
 
   // Provide a stable callback for NoteVisualizer to read current time from scheduler
   const getVisualizerTick = useCallback(
@@ -67,24 +77,18 @@ export function AudioPlayer() {
     };
   }, []);
 
-  const getSynth = useCallback(() => {
-    if (!synthRef.current) {
-      synthRef.current = new SynthEngine(registry);
-    }
-    return synthRef.current;
-  }, [registry]);
-
   const buildScheduler = useCallback<() => MMLScheduler>(() => {
-    setSchedulerError([]);
+    setErrors([]);
 
     const synth = getSynth();
     const scheduler = new MMLScheduler(
       synth,
+      currentBanks,
       mml,
       TICKS_PER_WHOLE_NOTE,
       (e) => {
         console.error("MMLScheduler error:", e);
-        setSchedulerError((prev) => {
+        setErrors((prev) => {
           if (prev.includes(String(e))) {
             return prev;
           } else {
@@ -107,7 +111,7 @@ export function AudioPlayer() {
     setActiveChannels(scheduler.channels);
     setTotalTime(scheduler.duration);
     return scheduler;
-  }, [getSynth, mml]);
+  }, [getSynth, mml, currentBanks]);
 
   // Initialize or re-create scheduler when MML changes so totalTime is immediately known
   useEffect(() => {
@@ -125,23 +129,16 @@ export function AudioPlayer() {
 
   const handlePlay = useCallback(async () => {
     if (playbackState === "playing") return;
-    setError(null);
-    setSchedulerError([]);
 
-    try {
-      if (mmlHasChanged() || !schedulerRef.current) {
-        schedulerRef.current?.stop();
-        schedulerRef.current?.dispose();
-        schedulerRef.current = buildScheduler();
-        lastParsedMml.current = mml;
-      }
-
-      await schedulerRef.current.play();
-      setPlaybackState("playing");
-    } catch (err) {
-      console.error("Playback error:", err);
-      setError(`エラー: ${err instanceof Error ? err.message : String(err)}`);
+    if (mmlHasChanged() || !schedulerRef.current) {
+      schedulerRef.current?.stop();
+      schedulerRef.current?.dispose();
+      schedulerRef.current = buildScheduler();
+      lastParsedMml.current = mml;
     }
+
+    await schedulerRef.current.play();
+    setPlaybackState("playing");
   }, [playbackState, buildScheduler, mmlHasChanged, mml]);
 
   const handlePause = useCallback(() => {
@@ -240,20 +237,15 @@ export function AudioPlayer() {
           />
         )}
 
-        {error && (
-          <div role="alert" className="alert alert-error">
-            <span>{error}</span>
-          </div>
-        )}
-        {schedulerError.length > 0 && (
+        {errors.length > 0 && (
           <div
             role="alert"
             className={clsx(
-              "alert alert-warning alert-vertical gap-1 text-left justify-start",
+              "alert alert-error alert-vertical gap-1 flex flex-col text-left items-start",
               "max-h-[20vh] overflow-y-auto",
             )}
           >
-            {schedulerError.map((error, i) => (
+            {errors.map((error, i) => (
               <p key={i}>{error}</p>
             ))}
           </div>

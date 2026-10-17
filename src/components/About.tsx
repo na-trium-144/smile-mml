@@ -5,10 +5,10 @@ import clsx from "clsx";
 interface PackageLicense {
   name: string;
   version?: string;
-  identifier: string;
+  identifier?: string;
   text: string;
 
-  href: string;
+  href?: string;
 }
 export function About() {
   const [packages, setPackages] = useState<PackageLicense[]>([]);
@@ -19,10 +19,13 @@ export function About() {
       .then((json) =>
         setPackages(
           (json as PackageLicense[])
-            .map((p) => ({
-              ...p,
-              href: `https://www.npmjs.com/package/${p.name}`,
-            }))
+            .map(
+              (p) =>
+                ({
+                  ...p,
+                  href: `https://www.npmjs.com/package/${p.name}`,
+                }) as PackageLicense,
+            )
             .concat(cssLicenses)
             .sort((a, b) => (a.name > b.name ? 1 : -1)),
         ),
@@ -100,7 +103,7 @@ export function About() {
           をベースにしています。
         </div>
         <div>
-          音源のパース・オーディオ処理は
+          オーディオ処理は
           <ul className="ml-2">
             <li>
               <LicenseAccordion
@@ -132,6 +135,34 @@ export function About() {
             ))}
           </ul>
         </div>
+        <div>
+          音源データは以下の2つを{" "}
+          <a
+            href="https://github.com/musescore/sftools"
+            className="link link-primary"
+            target="_blank"
+          >
+            sf3convert
+          </a>{" "}
+          で sf3 に変換して圧縮したものを同梱しています。
+          <ul className="ml-2">
+            <li>
+              <LicenseAccordion
+                name="GeneralUser GS"
+                version="2.0.3"
+                href="https://schristiancollins.com/generaluser.php"
+                text={generalUserGSLicense}
+              />
+            </li>
+            <li>
+              <LicenseAccordion
+                name="FluidR3_GM"
+                identifier="MIT"
+                text={fluidR3GMLicense}
+              />
+            </li>
+          </ul>
+        </div>
       </section>
     </>
   );
@@ -144,11 +175,17 @@ function LicenseAccordion(license: PackageLicense) {
       name="AboutLicenseAccordion"
     >
       <summary className="collapse-title p-1 pr-12 w-max max-w-full">
-        <a href={license.href} className="link link-primary" target="_blank">
-          {license.name}
-        </a>{" "}
+        {license.href ? (
+          <a href={license.href} className="link link-primary" target="_blank">
+            {license.name}
+          </a>
+        ) : (
+          <span>{license.name}</span>
+        )}{" "}
         {license.version}{" "}
-        <span className="text-sm">({license.identifier})</span>
+        {license.identifier && (
+          <span className="text-sm">({license.identifier})</span>
+        )}
       </summary>
       <div className="collapse-content pb-1">
         <pre
@@ -424,3 +461,76 @@ const marmoooMidyLicense = `                                 Apache License
    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
    See the License for the specific language governing permissions and
    limitations under the License.`;
+
+const fluidR3GMLicense = `Copyright (c) 2000-2002, 2008 Frank Wen <getfrank@gmail.com>
+
+Permission is hereby granted, free of charge, to any person
+obtaining a copy of this software and associated documentation
+files (the "Software"), to deal in the Software without
+restriction, including without limitation the rights to use,
+copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the
+Software is furnished to do so, subject to the following
+conditions:
+
+The above copyright notice and this permission notice shall be
+included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES
+OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT
+HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+OTHER DEALINGS IN THE SOFTWARE.
+`;
+
+const generalUserGSLicense = `*** GeneralUser GS v2.0.3 ***
+***      License v2.0     ***
+
+** License of the complete work **
+You may use GeneralUser GS without restriction for your own music creation,
+private or commercial. This SoundFont bank is provided to the community free of
+charge. Please feel free to use it in your software projects, and to modify the
+SoundFont bank or its packaging to suit your needs.
+
+** License of contained samples **
+GeneralUser GS inherits the usage rights of the samples contained within, all of
+which allow full use in music production, including the ability to make profit
+from musical recordings created with GeneralUser GS.
+
+Many of the samples are original, but some were taken from other banks freely
+(and legally) available on the Internet from various SoundFont websites. Because
+GeneralUser GS originated as a personal project with no intention for
+publication, I cannot be 100% sure where all of the samples originated, although
+I do know that none of them came from commercially published SoundFont packages
+or sample CDs. Regardless, many "free" SoundFonts available on the web may
+indeed contain samples of questionable origin. My understanding of the
+copyrights of all samples is only as good as the information provided by the
+original sources. If you become aware of any restricted samples being used in
+GeneralUser GS, please let me know so I can replace them.
+
+This uncertainty may concern you if you intend to use GeneralUser GS in a
+commercial software product. That being said, I have never received any
+complaint regarding sample ownership since I published the original GeneralUser
+GS back in 2000, and as far as I am aware, neither have any of the companies
+creating commercial software products using GeneralUser GS.
+
+** More info **
+If you plan to feature GeneralUser GS on your own website, please do not link
+directly to my download files. Either link to my website, or provide your own
+local copy instead.
+
+I hope you enjoy GeneralUser GS! This SoundFont bank is the product of many
+years of hard work.
+
+You can find updates to GeneralUser GS and more of my virtual instruments at:
+http://www.schristiancollins.com
+
+I can be reached via the contact page on my website here:
+https://www.schristiancollins.com/contact
+
+Thank you!
+-~Chris
+`;

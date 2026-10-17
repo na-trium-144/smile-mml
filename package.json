@@ -20,6 +20,7 @@
     "@fontsource/league-mono": "^5.3.0",
     "@fontsource/m-plus-1p": "^5.3.0",
     "@marmooo/soundfont": "^0.3.4",
+    "@wasm-audio-decoders/ogg-vorbis": "^0.1.20",
     "ace-builds": "^1.44.0",
     "clsx": "^2.1.1",
     "nitro-fs": "^1.1.1",

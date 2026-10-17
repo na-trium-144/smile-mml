@@ -6,6 +6,9 @@ import {
   useCallback,
 } from "react";
 import { extractMacro } from "../parser";
+import sample1 from "../samples/sample1.mml?raw";
+import sample2 from "../samples/get_started_merged.mml?raw";
+import sample3 from "../samples/NA_NN.MML?raw";
 
 interface MmlFile {
   isSample?: boolean;
@@ -33,7 +36,9 @@ export function usePlaylist() {
 
 export function PlaylistProvider({ children }: { children: ReactNode }) {
   const [files, setFiles] = useState<Readonly<MmlFile>[]>([
-    { isSample: true, name: "sample1", content: "c" },
+    { isSample: true, name: "サンプル1", content: sample1 },
+    { isSample: true, name: "サンプル2", content: sample2 },
+    { isSample: true, name: "サンプル3", content: sample3 },
   ]);
   const [currentIndex, setCurrentIndex] = useState<number>(0);
 
@@ -49,9 +54,10 @@ export function PlaylistProvider({ children }: { children: ReactNode }) {
           },
         ]),
       );
+      setCurrentIndex(files.length);
     };
     reader.readAsText(file);
-  }, []);
+  }, [files]);
 
   const newFile = useCallback(() => {
     setFiles((prev) => prev.concat([{ name: "", content: "" }]));

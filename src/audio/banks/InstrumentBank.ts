@@ -7,18 +7,12 @@
 import type { VoiceData } from '../types.js';
 
 export interface InstrumentBank {
-  readonly name: string;
-
-  /**
-   * Check if this bank can handle the given program number (@n)
-   */
-  hasProgram(program: number): boolean;
-
+  readonly type: "sf2" | "basicWave" | "nds";
   /**
    * Get voice data for the specified program, note, and velocity.
    * Resolves key splits, velocity layers, sample looping, and default ADSR.
    */
-  getVoice(program: number, noteNumber: number, velocity: number): VoiceData | null;
+  getVoice(program: number, noteNumber: number, velocity: number): Promise<VoiceData | null> | VoiceData | null;
 
   /**
    * Optional cleanup
