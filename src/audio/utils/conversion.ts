@@ -42,7 +42,7 @@ export function sbDetuneToCents(detune: number): number {
  * A=127: instantaneous
  */
 export function convertSmileBASICEnvelope(
-  envelope: EnvelopeParams,
+  envelope: Omit<EnvelopeParams, "enabled">,
 ): ADSRParams {
   return {
     attackTime: NDSInstrumentBank.getAttackSeconds(envelope.a),

@@ -67,7 +67,7 @@ export class SF2InstrumentBank implements InstrumentBank {
     // not implemented
     // 268, 269, 270, 281, 360, 361-411
     // implement as PSG
-    // 256, 257, 258, 259, 263, 297, 344
+    // 256, 257, 258, 259, 263, 266, 297, 344
   ] as const;
   static resolveBankPreset(program: number): {
     bank?: number;

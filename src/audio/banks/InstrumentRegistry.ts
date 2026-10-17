@@ -6,19 +6,19 @@
 
 import type { InstrumentBank } from './InstrumentBank.js';
 import type { VoiceData } from '../types.js';
-import { PSGInstrumentBank } from './PSGInstrumentBank.js';
+import { BasicWaveBank } from './BasicWaveBank.js';
 // import { generateSquareWaveHarmonics } from '../utils/waveformGenerator.js';
 
 export class InstrumentRegistry {
   private banks: InstrumentBank[] = [];
-  private psgBank: PSGInstrumentBank;
+  private psgBank: BasicWaveBank;
 
   // Fallback harmonic for default synth when SF2/ROM is not yet loaded
   // private fallbackHarmonics = generateSquareWaveHarmonics(0.5, 32);
 
   constructor() {
     // PSG bank is always available as core hardware emulator
-    this.psgBank = new PSGInstrumentBank();
+    this.psgBank = new BasicWaveBank();
     this.banks.push(this.psgBank);
     // TODO: commented out for debugging NDSInstrumentBank.
   }

@@ -19,13 +19,11 @@ import type {
   ADSRParams,
   SampleVoiceData,
   PeriodicVoiceData,
-  NoiseVoiceData,
 } from "../types.js";
 import {
-  generateSquareWaveHarmonics,
   PSG_DUTY_CYCLES,
 } from "../utils/waveformGenerator.js";
-import { generateLFSRNoise } from "../utils/noiseGenerator.js";
+import { BasicWaveBank } from "./BasicWaveBank.js";
 
 export class NDSInstrumentBank implements InstrumentBank {
   public readonly name: string = "Nintendo DS ROM";
@@ -36,9 +34,6 @@ export class NDSInstrumentBank implements InstrumentBank {
 
   // Decoded PCM cache by "swarId:waveId"
   private pcmCache: Map<string, Float32Array> = new Map();
-
-  // Noise PCM cache
-  private noisePcm: Float32Array | null = null;
 
   /**
    * get list of SDATs
@@ -204,15 +199,15 @@ export class NDSInstrumentBank implements InstrumentBank {
       const direct = inst as InstanceType<typeof Audio.DirectInstrument>;
       const dutyIndex = Math.min(6, direct.noteInfo.waveId % 7);
       const duty = PSG_DUTY_CYCLES[dutyIndex];
-      const harmonics = generateSquareWaveHarmonics(duty, 64);
+      const harmonics = BasicWaveBank.PSG_HARMONICS.get(duty)!;
       const voice: PeriodicVoiceData = {
         kind: "periodic",
-        duty,
+        id: `${this.name}_psg_${duty}`,
         real: harmonics.real,
         imag: harmonics.imag,
         defaultEnvelope: this.convertNdsEnvelope(direct.noteInfo),
         defaultPan: (direct.noteInfo.pan - 64) / 64,
-        attenuation: 0.8,
+        attenuation: 1,
       };
       return voice;
     }
@@ -220,17 +215,19 @@ export class NDSInstrumentBank implements InstrumentBank {
     // Handle White Noise Instrument
     else if (inst.type === Audio.InstrumentType.WhiteNoise) {
       const direct = inst as InstanceType<typeof Audio.DirectInstrument>;
-      if (!this.noisePcm) {
-        this.noisePcm = generateLFSRNoise(44100, 1.0);
-      }
-      const voice: NoiseVoiceData = {
+      const voice: SampleVoiceData = {
         kind: "noise",
-        noiseType: "lfsr",
-        pcm: this.noisePcm,
-        sampleRate: 44100,
+        pcm: BasicWaveBank.NOISE_PCM,
+        sampleRate: 48000,
         defaultEnvelope: this.convertNdsEnvelope(direct.noteInfo),
         defaultPan: (direct.noteInfo.pan - 64) / 64,
-        attenuation: 0.8,
+        attenuation: 1,
+        loop: true,
+        loopStart: 0,
+        loopEnd: BasicWaveBank.NOISE_PCM.length,
+        rootKey: 114, // 117 in nitro-fs
+        fineTune: 0,
+        ignoreKey: false,
       };
       return voice;
     } else {

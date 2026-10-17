@@ -18,7 +18,7 @@ export interface ADSRParams {
  * Sample-based instrument voice data (SF2, NDS PCM)
  */
 export interface SampleVoiceData {
-  kind: 'sample';
+  kind: 'sample' | 'noise';
   pcm: Float32Array; // normalized to [-1.0, 1.0]
   sampleRate: number;
   rootKey: number; // MIDI note number of original sample
@@ -33,6 +33,7 @@ export interface SampleVoiceData {
     cutoffHz: number;
     resonanceDb: number;
   };
+  ignoreKey?: boolean; // if true, ignore note number
 }
 
 /**
@@ -40,31 +41,19 @@ export interface SampleVoiceData {
  */
 export interface PeriodicVoiceData {
   kind: 'periodic';
-  duty: number; // duty cycle (e.g. 0.125, 0.25, 0.5)
+  id: string; // 例: "square_0.5", "sawtooth", "sine"
   real: Float32Array; // Fourier series cosine coefficients
   imag: Float32Array; // Fourier series sine coefficients
   defaultEnvelope: ADSRParams;
   defaultPan?: number;
   attenuation?: number;
-}
-
-/**
- * Noise instrument voice data (DSi/NDS LFSR noise or white noise)
- */
-export interface NoiseVoiceData {
-  kind: 'noise';
-  noiseType: 'white' | 'lfsr';
-  pcm: Float32Array; // Pre-generated loopable noise sample
-  sampleRate: number;
-  defaultEnvelope: ADSRParams;
-  defaultPan?: number;
-  attenuation?: number;
+  keyShift?: number;
 }
 
 /**
  * Unified VoiceData interface returned by all InstrumentBanks
  */
-export type VoiceData = SampleVoiceData | PeriodicVoiceData | NoiseVoiceData;
+export type VoiceData = SampleVoiceData | PeriodicVoiceData;
 
 /**
  * Prepared Note ready for scheduling with resolved lookahead portamento & ties

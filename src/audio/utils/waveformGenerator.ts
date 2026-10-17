@@ -41,3 +41,34 @@ export function generateSquareWaveHarmonics(
 
   return { real, imag };
 }
+
+
+/**
+ * ノコギリ波のフーリエ級数
+ */
+export function generateSawtoothHarmonics(
+  harmonics: number = 64
+): { real: Float32Array; imag: Float32Array } {
+  const real = new Float32Array(harmonics + 1);
+  const imag = new Float32Array(harmonics + 1);
+
+  for (let n = 1; n <= harmonics; n++) {
+    // b_n = (2 / (n * pi)) * (-1)^(n+1)
+    imag[n] = (2 / (n * Math.PI)) * (n % 2 === 1 ? 1 : -1);
+  }
+
+  return { real, imag };
+}
+
+/**
+ * サイン波（基本波のみ）
+ */
+export function generateSineHarmonics(): { real: Float32Array; imag: Float32Array } {
+  const real = new Float32Array(2);
+  const imag = new Float32Array(2);
+
+  // 基本波（n=1）の正弦波成分のみ1.0
+  imag[1] = 1.0;
+
+  return { real, imag };
+}

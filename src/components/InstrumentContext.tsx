@@ -18,6 +18,7 @@ import { InstrumentRegistry } from "../audio/banks/InstrumentRegistry.js";
 import { SF2InstrumentBank } from "../audio/banks/SF2InstrumentBank.js";
 import { NDSInstrumentBank } from "../audio/banks/NDSInstrumentBank.js";
 import clsx from "clsx";
+import { BasicWaveBank } from "../audio/index.js";
 
 const presetSF2Names = ["GeneralUser GS", "FluidR3 GM"] as const;
 
@@ -238,7 +239,7 @@ export function InstrumentSelect() {
               <div>
                 <span className="badge badge-success badge-sm">{sf2Name}</span>
                 <span className="mx-1 text-sm">+</span>
-                <span className="badge badge-warning badge-sm">PSG音源</span>
+                <span className="badge badge-warning badge-sm">波形生成</span>
               </div>
             )
           : ndsName && (
@@ -251,7 +252,7 @@ export function InstrumentSelect() {
             type="radio"
             name="InstrumentSelect"
             className="tab"
-            aria-label="SF2 + PSG"
+            aria-label="SF2 + 波形生成"
             checked={bankSelected === "sf2"}
             onChange={(e) => {
               if (e.target.checked) {
@@ -403,18 +404,27 @@ export function InstrumentSelect() {
 function SF2InstrumentTable() {
   const { sf2Bank } = useInstrumentContext();
   const sf2Programs = sf2Bank?.getAllPrograms() ?? [];
-  const hiddenPresetMapped = SF2InstrumentBank.sb3HiddenPresets
-    .map((program) => ({
-      program,
-      ...SF2InstrumentBank.resolveBankPreset(program),
-    }))
-    .map((pMap) => ({
-      pMap,
-      pSf2: sf2Programs.find(
-        (pSf2) => pSf2.bank === (pMap.bank ?? 0) && pSf2.preset === pMap.preset,
-      ),
-    }));
-  hiddenPresetMapped.sort((a, b) => a.pMap.program - b.pMap.program);
+  type HiddenPresetMapped =
+    | ({ program: number; pSf2?: (typeof sf2Programs)[number] } & ReturnType<
+        typeof SF2InstrumentBank.resolveBankPreset
+      >)
+    | ReturnType<typeof BasicWaveBank.allPrograms>[number];
+  const hiddenPresetMapped: HiddenPresetMapped[] = [
+    ...SF2InstrumentBank.sb3HiddenPresets
+      .map((program) => ({
+        program,
+        ...SF2InstrumentBank.resolveBankPreset(program),
+      }))
+      .map((pMap) => ({
+        ...pMap,
+        pSf2: sf2Programs.find(
+          (pSf2) =>
+            pSf2.bank === (pMap.bank ?? 0) && pSf2.preset === pMap.preset,
+        ),
+      })),
+    ...BasicWaveBank.allPrograms(),
+  ];
+  hiddenPresetMapped.sort((a, b) => a.program - b.program);
   return (
     <>
       <p className="my-1 text-paragraph text-sm">
@@ -425,15 +435,14 @@ function SF2InstrumentTable() {
         (BEEP音など置き換え先を用意していない音色もあります。)
       </p>
       <p className="my-1 text-paragraph text-sm">
-        <span className="text-sb3-label">@144</span> 〜{" "}
-        <span className="text-sb3-label">@151</span> には{" "}
-        <span className="badge badge-sm badge-warning">PSG音源</span>{" "}
-        が生成されます。
+        PSG音源、ノイズ、ノコギリ波、サイン波
+        はサウンドフォントを使わずに生成します。
       </p>
       <p className="my-1 text-paragraph text-sm">
         SmileMML 独自の拡張として <span className="text-sb3-label">@131</span>{" "}
         〜 <span className="text-sb3-label">@143</span>{" "}
-        にGM2標準のドラムセットを追加しています。 また、{" "}
+        にGM2標準のドラムセットを、 <span className="text-sb3-label">@152</span>{" "}
+        に プチコンmkII 仕様のノイズを追加しています。 また、{" "}
         <span className="text-sb3-label">
           @ バンク番号 × 1000 + プリセット番号
         </span>{" "}
@@ -478,30 +487,41 @@ function SF2InstrumentTable() {
                 <th>音色番号</th>
                 <th>置き換え先</th>
                 <th>名前</th>
+                <th>備考</th>
               </tr>
             </thead>
             <tbody>
-              {hiddenPresetMapped.map(
-                ({ pMap, pSf2 }) =>
-                  pSf2 && (
-                    <tr key={pMap.program}>
-                      <th className="text-sb3-label">@{pMap.program}</th>
-                      <td className="text-success-content">
-                        @{pSf2.program}{" "}
-                        {pMap.keyShift && (
-                          <span className="inline-block text-base-content">
-                            (キー{" "}
-                            {pMap.keyShift.toLocaleString("ja-JP", {
-                              signDisplay: "always",
-                              useGrouping: false,
-                            })}
-                            )
-                          </span>
-                        )}
+              {hiddenPresetMapped.map((p) =>
+                "pSf2" in p && p.pSf2 ? (
+                  <tr key={p.program}>
+                    <th className="text-sb3-label">@{p.program}</th>
+                    <td className="text-success-content">@{p.pSf2.program}</td>
+                    <td className="text-success-content">{p.pSf2.name} </td>
+                    <td>
+                      {p.keyShift &&
+                        `キー ${p.keyShift.toLocaleString("en", {
+                          signDisplay: "always",
+                          useGrouping: false,
+                        })}`}
+                    </td>
+                  </tr>
+                ) : (
+                  "type" in p && (
+                    <tr key={p.program}>
+                      <th className="text-sb3-label">@{p.program}</th>
+                      <td className="text-warning-content"></td>
+                      <td className="text-warning-content">{p.name}</td>
+                      <td>
+                        {p.ignoreKey && "キー固定"}
+                        {p.keyShift &&
+                          `キー ${p.keyShift.toLocaleString("en", {
+                            signDisplay: "always",
+                            useGrouping: false,
+                          })}`}
                       </td>
-                      <td className="text-success-content">{pSf2.name}</td>
                     </tr>
-                  ),
+                  )
+                ),
               )}
             </tbody>
           </table>
