@@ -472,7 +472,10 @@ export const NoteVisualizer: FC<NoteVisualizerProps> = ({
       loop();
     } else {
       // Draw once when not playing (e.g. after seek)
-      draw();
+      document.fonts
+        .load(`${FONT_SIZE}px 'League Mono'`)
+        .catch(() => undefined)
+        .then(() => draw());
     }
 
     return () => {
