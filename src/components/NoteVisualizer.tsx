@@ -25,37 +25,14 @@ import { centsToSbDetune } from "../audio/utils/conversion";
  * O4 = white, higher octaves → yellow → red, lower octaves → cyan → blue.
  */
 function octaveColor(octave: number): string {
-  const diff = octave - 4;
-  if (diff === 0) return "#ffffff";
-  if (diff > 0) {
-    // white → yellow → red
-    const t = Math.min(diff / 4, 1);
-    if (t <= 0.5) {
-      // white → yellow: decrease blue
-      const ratio = t * 2;
-      const b = Math.round(255 * (1 - ratio));
-      return `rgb(255,255,${b})`;
-    } else {
-      // yellow → red: decrease green
-      const ratio = (t - 0.5) * 2;
-      const g = Math.round(255 * (1 - ratio));
-      return `rgb(255,${g},0)`;
-    }
-  } else {
-    // white → cyan → blue
-    const t = Math.min(-diff / 4, 1);
-    if (t <= 0.5) {
-      // white → cyan: decrease red
-      const ratio = t * 2;
-      const r = Math.round(255 * (1 - ratio));
-      return `rgb(${r},255,255)`;
-    } else {
-      // cyan → blue: decrease green
-      const ratio = (t - 0.5) * 2;
-      const g = Math.round(255 * (1 - ratio));
-      return `rgb(0,${g},255)`;
-    }
-  }
+  if (octave >= 8) return "#ff0000";
+  else if (octave === 7) return "#ff5500";
+  else if (octave === 6) return "#ffaa00";
+  else if (octave === 5) return "#ffff00";
+  else if (octave === 4) return "#ffffff";
+  else if (octave === 3) return "#80ffff";
+  else if (octave === 2) return "#00ee55";
+  else /*if(octave <= 1)*/ return "#008000";
 }
 
 export interface NoteVisualizerProps {
