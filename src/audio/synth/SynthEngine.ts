@@ -4,7 +4,7 @@
  * portamento glides, envelopes, and modulations across all sound sources.
  */
 
-import type { PreparedNote, ADSRParams, VoiceData } from "../types.js";
+import type { PostProcessedNote, ADSRParams, VoiceData, NoteSegment } from "../types.js";
 import {
   midiNoteToFrequency,
   convertSmileBASICEnvelope,
@@ -118,7 +118,7 @@ export class SynthEngine {
    */
   public async playNote(
     voiceData: VoiceData,
-    note: PreparedNote,
+    note: PostProcessedNote,
     startTime: number,
     durationSec: number,
     gateDurationSec: number,
@@ -153,19 +153,6 @@ export class SynthEngine {
     // 3. Create sound source node based on VoiceData kind
     let sourceNode: AudioScheduledSourceNode;
 
-    const segments = note.segments.length > 0 ? note.segments : [{
-      tickOffset: 0,
-      durationTicks: note.duration,
-      startTimeOffsetSec: 0,
-      durationSec,
-      noteNumber: note.noteNumber,
-      detuneCents: note.detuneCents,
-      velocity: note.velocity,
-      volume: note.volume,
-      pan: note.pan,
-      isPortamento: false,
-    }];
-
     switch (voiceData.kind) {
       case "sample":
       case "noise": {
@@ -178,10 +165,10 @@ export class SynthEngine {
       };
 
       // Schedule segments for sample voice
-      for (let i = 0; i < segments.length; i++) {
-        const seg = segments[i];
+      for (let i = 0; i < note.segments.length; i++) {
+        const seg = note.segments[i];
         const segStartTime = startTime + (seg.startTimeOffsetSec ?? 0);
-        const segDuration = seg.durationSec ?? (i === segments.length - 1 ? durationSec - (seg.startTimeOffsetSec ?? 0) : 0);
+        const segDuration = seg.durationSec ?? (i === note.segments.length - 1 ? durationSec - (seg.startTimeOffsetSec ?? 0) : 0);
         const segEndTime = segStartTime + segDuration;
 
         // Set pitch
@@ -235,10 +222,10 @@ export class SynthEngine {
         osc.setPeriodicWave(wave);
 
         // Schedule segments for periodic oscillator voice
-      for (let i = 0; i < segments.length; i++) {
-        const seg = segments[i];
+      for (let i = 0; i < note.segments.length; i++) {
+        const seg = note.segments[i];
         const segStartTime = startTime + (seg.startTimeOffsetSec ?? 0);
-        const segDuration = seg.durationSec ?? (i === segments.length - 1 ? durationSec - (seg.startTimeOffsetSec ?? 0) : 0);
+        const segDuration = seg.durationSec ?? (i === note.segments.length - 1 ? durationSec - (seg.startTimeOffsetSec ?? 0) : 0);
         const segEndTime = segStartTime + segDuration;
 
         // Set pitch
@@ -266,13 +253,11 @@ export class SynthEngine {
     }
 
     // 4. Schedule ADSR envelope on normalized EnvelopeGain (peak = 1.0)
-    const releaseTime = EnvelopeHelper.scheduleADSR(
+    note.synth.envelope = new EnvelopeHelper(envelope, gateDurationSec);
+    const releaseTime = note.synth.envelope.releaseTime;
+    note.synth.envelope.scheduleADSR(
       envelopeGain.gain,
-      envelope,
-      1.0,
       startTime,
-      gateDurationSec,
-      false
     );
 
     // 5. Total stop time calculation

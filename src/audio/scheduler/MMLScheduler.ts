@@ -466,6 +466,7 @@ export class MMLScheduler {
       envelope: first.envelope,
       modulation: first.modulation,
       segments: compound.segments,
+      synth: {},
     };
 
     const noteEnd = postProcessedNote.tick + postProcessedNote.duration;
@@ -511,6 +512,7 @@ export class MMLScheduler {
               octave: n.baseOctave,
         },
       ],
+      synth: {},
     };
 
     const noteEnd = postProcessedNote.tick + postProcessedNote.duration;
@@ -730,11 +732,13 @@ export class MMLScheduler {
     note: PostProcessedNote,
     audioTime: number,
   ): Promise<void> {
-    const durationSec = this.tempoMap.durationTicksToSeconds(
+    note.synth = {};
+
+    note.synth.durationSec = this.tempoMap.durationTicksToSeconds(
       note.tick,
       note.duration,
     );
-    const gateDurationSec = this.tempoMap.durationTicksToSeconds(
+    note.synth.gateDurationSec = this.tempoMap.durationTicksToSeconds(
       note.tick,
       note.gateDuration,
     );
@@ -761,15 +765,18 @@ export class MMLScheduler {
         note.noteNumber,
         note.velocity,
       );
-      if (voiceData) break;
+      if (voiceData) {
+        note.synth.voiceType = bank.type;
+        break;
+      }
     }
     if (voiceData) {
       await this.synth.playNote(
         voiceData,
         note,
         Math.max(this.synth.currentTime, audioTime),
-        durationSec,
-        gateDurationSec,
+        note.synth.durationSec,
+        note.synth.gateDurationSec,
       );
     } else {
       throw new Error(`@${note.program} に対応する音源が見つかりません`);

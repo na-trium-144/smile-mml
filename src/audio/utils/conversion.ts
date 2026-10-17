@@ -24,6 +24,9 @@ export function midiNoteToFrequency(
 export function sbDetuneToCents(detune: number): number {
   return (detune / 128) * 100;
 }
+export function centsToSbDetune(detune: number): number {
+  return (detune / 100) * 128;
+}
 
 /**
  * Convert SmileBASIC @E envelope to physical ADSR parameters
@@ -66,10 +69,10 @@ export interface ActiveModulationConfig {
 
 /**
  * Resolve active modulation from MML modulation parameters
- * 
+ *
  * SmileBASIC3での実測値をもとにしている。
  * SmileBASIC2とは仕様が異なることが知られているので、ここではnitro-fsは用いない。
- * 
+ *
  * - Delay: Delay * 0.01953125s (128th note at BPM 96)
  * - Speed: Speed / 2.5 Hz (period is (Speed)th note at BPM 96; 0 means no effect)
  * - @ML AutoPan: +/- (Depth * Range / 2) on 0-127 pan scale -> normalized (+/- 0 to 1)

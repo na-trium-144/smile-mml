@@ -17,7 +17,8 @@ import {
   useState,
 } from "react";
 import type { PostProcessedNote } from "../audio/types";
-
+import clsx from "clsx";
+import { centsToSbDetune } from "../audio/utils/conversion";
 
 /**
  * Returns a CSS color string for the given octave.
@@ -110,7 +111,14 @@ export const NoteVisualizer: FC<NoteVisualizerProps> = ({
 
   const soundingNotes = useRef<(PostProcessedNote | undefined)[]>([]);
   const [currentPrograms, setCurrentPrograms] = useState<
-    (number | undefined)[]
+    (
+      | {
+          program: number;
+          type: "sf2" | "nds" | "basicWave" | undefined;
+          envelopeEnabled: boolean;
+        }
+      | undefined
+    )[]
   >([]);
 
   const draw = useCallback(() => {
@@ -191,42 +199,82 @@ export const NoteVisualizer: FC<NoteVisualizerProps> = ({
         }
       }
 
-      for (let ni = lo; ni < chNotes.length; ni++) {
+      for (let ni = chNotes.length - 1; ni >= lo; ni--) {
         const note = chNotes[ni];
-        if (note.tick > viewEndTick) break; // past right edge
-
-        const x = halfWidth + (note.tick - currentTick) * PIXELS_PER_TICK;
+        // if (note.tick > viewEndTick) break; // past right edge
+        if (note.tick + note.duration < viewStartTick) break;
 
         // Check if note is currently sounding (between start and gate end)
         const isSounding =
-          currentTick >= note.tick && currentTick < note.tick + note.duration;
+          currentTick >= note.tick &&
+          currentTick <
+            note.tick +
+              note.gateDuration +
+              (note.duration / (note.synth.durationSec ?? 1)) *
+                (note.synth.envelope?.releaseTime ?? 0);
 
         if (isSounding) {
           // Draw green background for the note's sounding range
-          const bgX =
-            halfWidth + (note.tick - currentTick) * PIXELS_PER_TICK;
-          const bgW = note.duration * PIXELS_PER_TICK;
+          const bgX = halfWidth + (note.tick - currentTick) * PIXELS_PER_TICK;
+          // const bgW = note.duration * PIXELS_PER_TICK;
+          ctx.save();
           ctx.fillStyle = colorPrimary;
-          ctx.beginPath();
-          ctx.roundRect(bgX, yBase, bgW, CHANNEL_HEIGHT, SOUNDING_RADIUS);
-          ctx.fill();
-
+          // ctx.beginPath();
+          // ctx.roundRect(bgX, yBase, bgW, CHANNEL_HEIGHT, SOUNDING_RADIUS);
+          // ctx.fill();
+          ctx.translate(bgX, yBase);
+          note.synth.envelope?.drawADSR(
+            ctx,
+            (PIXELS_PER_TICK * note.duration) / note.synth.durationSec!,
+            CHANNEL_HEIGHT - 1,
+          );
+          ctx.restore();
           soundingNotes.current[ci] = note;
+
+          // 次のノートの開始タイミングで表示をカット
+          const nextNote = chNotes.at(ni + 1);
+          if (nextNote) {
+            ctx.save();
+            ctx.fillStyle = colorBase100;
+            ctx.globalAlpha = 0.8;
+            ctx.fillRect(
+              halfWidth + (nextNote.tick - currentTick) * PIXELS_PER_TICK,
+              yBase,
+              halfWidth,
+              CHANNEL_HEIGHT - 1,
+            );
+            ctx.restore();
+          }
+
+          break;
         }
+      }
+      for (let ni = 0; ni < chNotes.length; ni++) {
+        const note = chNotes[ni];
+        if (note.tick > viewEndTick) break; // past right edge
+        // if(note.tick + note.duration < viewStartTick) break;
+
+        const x = halfWidth + (note.tick - currentTick) * PIXELS_PER_TICK;
 
         // Draw note name
-        for(const seg of note.segments){
+        for (const seg of note.segments) {
           const segmentX = x + seg.tickOffset * PIXELS_PER_TICK;
           ctx.fillStyle = octaveColor(seg.octave);
           ctx.textAlign = "left";
           ctx.fillText(seg.noteStr, segmentX + PADDING_X, yCenter);
         }
-        if(note.segments.at(-1)?.portamentoTargetNoteStr){
+        if (note.segments.at(-1)?.portamentoTargetNoteStr) {
           // 長さのないポルタメントの場合だけ、直前の音符と重ねて右寄せにする
           const endX = x + note.duration * PIXELS_PER_TICK;
-          ctx.fillStyle = octaveColor(note.segments.at(-1)!.portamentoTargetOctave!);
+          ctx.fillStyle = octaveColor(
+            note.segments.at(-1)!.portamentoTargetOctave!,
+          );
           ctx.textAlign = "right";
-          ctx.fillText(note.segments.at(-1)!.portamentoTargetNoteStr!, endX - PADDING_X, yCenter);
+          ctx.fillText(
+            note.segments.at(-1)!.portamentoTargetNoteStr!,
+            endX - PADDING_X,
+            yCenter,
+          );
         }
       }
     }
@@ -241,7 +289,11 @@ export const NoteVisualizer: FC<NoteVisualizerProps> = ({
 
     const VEL_WIDTH = 32;
     const PAN_WIDTH = 32;
-    const cw2 = Math.round((VEL_WIDTH + PAN_WIDTH) * dpr);
+    const NOTE_WIDTH = 26;
+    const DETUNE_WIDTH = 26;
+    const cw2 = Math.round(
+      (VEL_WIDTH + PAN_WIDTH + NOTE_WIDTH + DETUNE_WIDTH) * dpr,
+    );
     if (canvas2.width !== cw2 || canvas2.height !== ch) {
       canvas2.width = cw2;
       canvas2.height = ch;
@@ -252,67 +304,165 @@ export const NoteVisualizer: FC<NoteVisualizerProps> = ({
 
     // Clear
     ctx2.clearRect(0, 0, width, height);
-    ctx2.font = `14px "M+ 1p", "M+ 1c", "M PLUS 1p"`;
-    ctx2.textBaseline = "middle";
+    ctx2.textBaseline = "alphabetic";
 
     for (let ci = 0; ci < channels.length; ci++) {
       const p = soundingNotes.current[ci];
       if (p) {
+        const s =
+          p.segments.findLast((s) => p.tick + s.tickOffset <= currentTick) ??
+          p.segments[0];
+
         const yBase = ci * CHANNEL_HEIGHT;
-        const yCenter = yBase + CHANNEL_HEIGHT / 2;
+        const yBaseline = yBase + CHANNEL_HEIGHT * 0.75;
+
+        const vel = s.velocity * s.volume;
+        const pan = s.pan;
+        let noteNumber: number | undefined = undefined;
+        let detune: number = Math.round(centsToSbDetune(s.detuneCents));
+        if (p.tick <= currentTick && p.tick + p.duration > currentTick) {
+          let noteNumber128 =
+            s.noteNumber * 128 + Math.round(centsToSbDetune(s.detuneCents));
+          if (
+            s.isPortamento &&
+            s.portamentoTargetNote !== undefined &&
+            s.portamentoTargetDetuneCents !== undefined
+          ) {
+            const nextNoteNumber128 =
+              s.portamentoTargetNote * 128 +
+              Math.round(centsToSbDetune(s.portamentoTargetDetuneCents));
+            noteNumber128 =
+              noteNumber128 +
+              Math.round(
+                ((nextNoteNumber128 - noteNumber128) *
+                  (currentTick - s.tickOffset - p.tick)) /
+                  s.durationTicks,
+              );
+          }
+          if (
+            (s.isPortamento &&
+              s.portamentoTargetNote !== undefined &&
+              s.portamentoTargetNote >= s.noteNumber) ||
+            (!s.isPortamento && s.detuneCents > 0)
+          ) {
+            noteNumber = Math.floor(noteNumber128 / 128);
+            detune = noteNumber128 % 128;
+          } else {
+            noteNumber = Math.ceil(noteNumber128 / 128);
+            detune = noteNumber128 - noteNumber * 128;
+          }
+        }
 
         ctx2.fillStyle = colorPrimary;
         ctx2.beginPath();
         ctx2.roundRect(
           0,
           yBase + CHANNEL_HEIGHT - 2,
-          (VEL_WIDTH * (p.velocity * p.volume)) / 127 / 127,
+          (VEL_WIDTH * vel) / 127 / 127,
           2,
           2,
         );
         ctx2.fill();
 
         ctx2.beginPath();
-        if (p.pan > 64) {
+        if (pan > 64) {
           ctx2.roundRect(
             VEL_WIDTH + PAN_WIDTH / 2,
             yBase + CHANNEL_HEIGHT - 2,
-            ((PAN_WIDTH / 2) * (p.pan - 64)) / 64,
+            ((PAN_WIDTH / 2) * (pan - 64)) / 64,
             2,
             2,
           );
         } else {
           ctx2.roundRect(
-            VEL_WIDTH + PAN_WIDTH / 2 - (PAN_WIDTH * (64 - p.pan)) / 64,
+            VEL_WIDTH + PAN_WIDTH / 2 - ((PAN_WIDTH / 2) * (64 - pan)) / 64,
             yBase + CHANNEL_HEIGHT - 2,
-            (PAN_WIDTH * (64 - p.pan)) / 64,
+            ((PAN_WIDTH / 2) * (64 - pan)) / 64,
             2,
             2,
           );
         }
         ctx2.fill();
 
+        ctx2.beginPath();
+        if (detune > 0) {
+          ctx2.roundRect(
+            VEL_WIDTH + PAN_WIDTH + (NOTE_WIDTH + DETUNE_WIDTH) / 2,
+            yBase + CHANNEL_HEIGHT - 2,
+            (((NOTE_WIDTH + DETUNE_WIDTH) / 2) * detune) / 128,
+            2,
+            2,
+          );
+        } else {
+          ctx2.roundRect(
+            VEL_WIDTH +
+              PAN_WIDTH +
+              (NOTE_WIDTH + DETUNE_WIDTH) / 2 +
+              (((NOTE_WIDTH + DETUNE_WIDTH) / 2) * detune) / 128,
+            yBase + CHANNEL_HEIGHT - 2,
+            -(((NOTE_WIDTH + DETUNE_WIDTH) / 2) * detune) / 128,
+            2,
+            2,
+          );
+        }
+        ctx2.fill();
+
+        ctx2.font = `14px "M+ 1p", "M+ 1c", "M PLUS 1p"`;
         ctx2.fillStyle = colorStatement;
         ctx2.textAlign = "center";
         ctx2.fillText(
-          Math.round((p.velocity * p.volume) / 127).toString(),
+          Math.round(vel / 127).toString(),
           VEL_WIDTH / 2,
-          yCenter,
+          yBaseline,
         );
 
         ctx2.fillText(
-          Math.round(p.pan).toString(),
+          Math.round(pan).toString(),
           VEL_WIDTH + PAN_WIDTH / 2,
-          yCenter,
+          yBaseline,
         );
+
+        ctx2.fillStyle = "#ffffff";
+        ctx2.textAlign = "right";
+        if (noteNumber !== undefined) {
+          ctx2.fillText(
+            noteNumber.toString(),
+            VEL_WIDTH + PAN_WIDTH + NOTE_WIDTH,
+            yBaseline,
+          );
+        }
+        if (detune !== 0) {
+          ctx2.fillStyle = colorStatement;
+          ctx2.font = `10px "M+ 1p", "M+ 1c", "M PLUS 1p"`;
+          ctx2.textAlign = "left";
+          ctx2.fillText(
+            detune.toLocaleString("en", {
+              signDisplay: "always",
+              useGrouping: false,
+            }),
+            VEL_WIDTH + PAN_WIDTH + NOTE_WIDTH,
+            yBaseline,
+          );
+        }
       }
     }
 
     setCurrentPrograms((prev) => {
       let changed = false;
       for (let ci = 0; ci < soundingNotes.current.length; ci++) {
-        const currentProgram = soundingNotes.current[ci]?.program;
-        if (currentProgram !== undefined && prev[ci] !== currentProgram) {
+        const currentProgram = soundingNotes.current[ci]
+          ? ({
+              program: soundingNotes.current[ci]!.program,
+              type: soundingNotes.current[ci]!.synth.voiceType,
+              envelopeEnabled: soundingNotes.current[ci]!.envelope.enabled,
+            } satisfies (typeof prev)[number])
+          : undefined;
+        if (
+          currentProgram !== undefined &&
+          (prev[ci]?.program !== currentProgram.program ||
+            prev[ci]?.type !== currentProgram.type ||
+            prev[ci]?.envelopeEnabled !== currentProgram.envelopeEnabled)
+        ) {
           changed = true;
           prev[ci] = currentProgram;
         }
@@ -323,7 +473,14 @@ export const NoteVisualizer: FC<NoteVisualizerProps> = ({
         return prev;
       }
     });
-  }, [channels, getCurrentTick, colorBase100, colorPrimary, colorStatement, getNotesForChannel]);
+  }, [
+    channels,
+    getCurrentTick,
+    colorBase100,
+    colorPrimary,
+    colorStatement,
+    getNotesForChannel,
+  ]);
 
   // Animation loop
   useEffect(() => {
@@ -372,25 +529,60 @@ export const NoteVisualizer: FC<NoteVisualizerProps> = ({
       >
         <canvas ref={canvasRef} style={{ imageRendering: "auto" }} />
       </div>
-      <div className="relative hidden md:flex flex-col text-sm text-center whitespace-nowrap w-10">
+      <div className="relative hidden sm:flex flex-col text-center items-center whitespace-nowrap w-12">
+        <span className="absolute bottom-full inset-x-0 flex text-xs">
+          <span className="text-sb3-label w-full">@</span>
+        </span>
         {channels.map((_, ci) =>
           currentPrograms[ci] !== undefined ? (
-            <span key={ci} className="flex-1 basis-0 text-sb3-label">
-              @{currentPrograms[ci]}
+            <span
+              key={ci}
+              style={{
+                height: CHANNEL_HEIGHT - 2,
+                marginTop: 1,
+                marginBottom: 1,
+              }}
+              className="flex justify-center items-baseline gap-0.5"
+            >
+              <span
+                className={clsx(
+                  "h-full rounded-sm px-0.5 badge badge-sm",
+                  currentPrograms[ci].type === "sf2"
+                    ? "badge-success"
+                    : currentPrograms[ci].type === "basicWave"
+                      ? "badge-warning"
+                      : currentPrograms[ci].type === "nds"
+                        ? "badge-accent"
+                        : "badge-ghost text-sb3-label",
+                )}
+              >
+                {currentPrograms[ci].program}
+              </span>
+              {currentPrograms[ci].envelopeEnabled && (
+                <span className="text-sb3-label text-[0.6rem]">E</span>
+              )}
             </span>
           ) : (
-            <span key={ci} className="flex-1" />
+            <span
+              key={ci}
+              style={{ height: CHANNEL_HEIGHT }}
+              className="flex-1 basis-0 min-h-0"
+            />
           ),
         )}
       </div>
       <div
         ref={canvasRectRef2}
-        className="relative hidden md:block text-center whitespace-nowrap"
+        className="relative hidden md:block -mr-3 text-center whitespace-nowrap"
         style={{ height: `${canvasHeight}px` }}
       >
-        <span className="absolute bottom-full inset-x-0 flex text-xs">
-          <span className="text-sb3-statement w-8">V*@V</span>
-          <span className="text-sb3-statement w-8">P</span>
+        <span className="absolute bottom-full inset-x-0 flex items-baseline text-xs">
+          <span className="text-sb3-statement w-[32px]">V*@V</span>
+          <span className="text-sb3-statement w-[32px]">P</span>
+          <span className="text-sb3-text w-[26px] text-right">N</span>
+          <span className="text-sb3-statement w-[26px] text-[0.6rem] text-left">
+            @D
+          </span>
         </span>
         <canvas ref={canvasRef2} style={{ imageRendering: "auto" }} />
       </div>
