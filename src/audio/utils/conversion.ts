@@ -28,6 +28,11 @@ export function centsToSbDetune(detune: number): number {
   return (detune / 100) * 64;
 }
 
+export function sbPanToStereoPanner(pan: number) : number{
+  // sb3でPanを0にすると完全に左になるわけではない。maxが±0.5くらい
+  return (pan - 64) / 64 / 2;
+}
+
 /**
  * Convert SmileBASIC @E envelope to physical ADSR parameters
  *
@@ -110,7 +115,7 @@ export function resolveModulationConfig(
   let depth = 0;
   if (target.type === "autoPan") {
     // Amplitude +/- (Depth * Range / 2) on 0-127 scale -> 0.0 to 1.0 pan
-    depth = Math.min(1.0, (target.depth * target.range) / (2 * 64));
+    depth = Math.min(1.0, (target.depth * target.range) / (2 * 64) / 2);
   } else if (target.type === "tremolo") {
     // Gain reduction ratio (0.0 to 1.0)
     depth = Math.min(1.0, (target.depth * target.range) / (2 * 127));

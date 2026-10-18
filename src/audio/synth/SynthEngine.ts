@@ -8,6 +8,7 @@ import type { PostProcessedNote, ADSRParams, VoiceData } from "../types.js";
 import {
   midiNoteToFrequency,
   convertSmileBASICEnvelope,
+  sbPanToStereoPanner,
 } from "../utils/conversion.js";
 import { EnvelopeHelper } from "./EnvelopeHelper.js";
 import { ModulationHelper } from "./ModulationHelper.js";
@@ -140,9 +141,8 @@ export class SynthEngine {
 
     // Initial velocity gain and pan from initial note properties
     velocityGain.gain.setValueAtTime((note.velocity / 127) * effectiveAtten, startTime);
-    const initialRequestedPan = (note.pan - 64) / 64;
     panNode.pan.setValueAtTime(
-      Math.max(-1.0, Math.min(1.0, basePan + initialRequestedPan)),
+      Math.max(-1.0, Math.min(1.0, basePan + sbPanToStereoPanner(note.pan))),
       startTime
     );
 
@@ -186,8 +186,7 @@ export class SynthEngine {
         // Schedule mid-compound parameter changes (V, P)
         if (i > 0) {
           velocityGain.gain.setValueAtTime((seg.velocity / 127) * effectiveAtten, segStartTime);
-          const reqPan = (seg.pan - 64) / 64;
-          panNode.pan.setValueAtTime(Math.max(-1.0, Math.min(1.0, basePan + reqPan)), segStartTime);
+          panNode.pan.setValueAtTime(Math.max(-1.0, Math.min(1.0, basePan + sbPanToStereoPanner(seg.pan))), segStartTime);
         }
       }
 
@@ -241,8 +240,7 @@ export class SynthEngine {
         // Schedule mid-compound parameter changes (V, P)
         if (i > 0) {
           velocityGain.gain.setValueAtTime((seg.velocity / 127) * effectiveAtten, segStartTime);
-          const reqPan = (seg.pan - 64) / 64;
-          panNode.pan.setValueAtTime(Math.max(-1.0, Math.min(1.0, basePan + reqPan)), segStartTime);
+          panNode.pan.setValueAtTime(Math.max(-1.0, Math.min(1.0, basePan + sbPanToStereoPanner(seg.pan))), segStartTime);
         }
       }
 
