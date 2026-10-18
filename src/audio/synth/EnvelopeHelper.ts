@@ -141,23 +141,17 @@ export class EnvelopeHelper {
     let prevPt = this.points[0];
     ctx.moveTo(toX(prevPt.time), toY(prevPt.level));
 
-    for (let i = 1; i < this.points.length; i++) {
+    for (let i = 1; i < this.points.length - 1; i++) {
       const currPt = this.points[i];
 
-      if (
-        currPt.type === "exponential" &&
-        prevPt.level > 0 &&
-        currPt.level > 0
-      ) {
-        // 指数カーブの場合(decayとrelease)、直線で、短めに表示する
-        ctx.lineTo(toX(prevPt.time + (currPt.time - prevPt.time) * 0.5), toY(currPt.level));
-      } else {
-        // 直線補間または点の設定
-        ctx.lineTo(toX(currPt.time), toY(currPt.level));
-      }
+      // 直線補間または点の設定
+      // わかりやすさのために指数であっても直線で表示している
+      ctx.lineTo(toX(currPt.time), toY(currPt.level));
 
       prevPt = currPt;
     }
+    // リリースのみ、直線で、短めに表示する
+    ctx.lineTo(toX(prevPt.time + (this.points.at(-1)!.time - prevPt.time) * 0.25), toY(this.points.at(-1)!.level));
 
     // 塗りつぶし描画（オプション）
     ctx.lineTo(toX(this.points.at(-1)!.time), toY(0));
