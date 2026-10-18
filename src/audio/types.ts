@@ -72,7 +72,7 @@ export interface NoteSegment {
   portamentoTargetDetuneCents?: number; // Target detune in cents
   
   // for NoteVisualizer
-  noteStr: string; // e.g. "C#4"
+  noteStr: string; // e.g. "C#4", include multiple note like "C#4&C#4" only when tie
   octave: number; // extracted octave number
   portamentoTargetNoteStr?: string;  // used only for trailing portamento note (duration=0)
   portamentoTargetOctave?: number;

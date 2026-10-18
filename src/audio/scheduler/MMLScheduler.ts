@@ -358,6 +358,7 @@ export class MMLScheduler {
           lastSeg.isPortamento = event.isPortamento;
           pending.totalDuration += event.duration;
           pending.lastNote = event;
+          lastSeg.noteStr += MMLScheduler.noteString(event);
         } else {
           // Different pitch or parameter change (slur), or following a portamento (_)
           if (event.duration > 0 || event.isTie || event.isPortamento) {
