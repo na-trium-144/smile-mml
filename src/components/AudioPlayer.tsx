@@ -36,6 +36,7 @@ export function AudioPlayer() {
   const [currentTime, setCurrentTime] = useState(0);
   const [totalTime, setTotalTime] = useState(0);
   const [activeChannels, setActiveChannels] = useState<number[]>([]);
+  const [isInfiniteLoop, setIsInfiniteLoop] = useState(false);
   const [errors, setErrors] = useState<string[]>([]);
 
   // Track last-parsed MML to recreate scheduler if MML text changes
@@ -110,6 +111,7 @@ export function AudioPlayer() {
 
     setActiveChannels(scheduler.channels);
     setTotalTime(scheduler.totalDurationSeconds);
+    setIsInfiniteLoop(scheduler.isInfiniteLoop);
     return scheduler;
   }, [getSynth, mml, currentBanks]);
 
@@ -161,7 +163,15 @@ export function AudioPlayer() {
     setCurrentTime(seekTo);
   }, []);
 
-  const seekMax = Math.max(totalTime, currentTime) || 1;
+  const seekMax = isInfiniteLoop
+    ? totalTime || 1
+    : Math.max(totalTime, currentTime) || 1;
+  const seekValue =
+    isInfiniteLoop && totalTime > 0
+      ? currentTime >= totalTime
+        ? currentTime % totalTime
+        : currentTime
+      : currentTime;
 
   return (
     <div className="card card-border w-full">
@@ -209,7 +219,7 @@ export function AudioPlayer() {
             min={0}
             max={seekMax}
             step={0.01}
-            value={currentTime}
+            value={seekValue}
             onChange={handleSeek}
           />
           <span className="sm:hidden mx-2">/</span>
@@ -223,7 +233,7 @@ export function AudioPlayer() {
           min={0}
           max={seekMax}
           step={0.01}
-          value={currentTime}
+          value={seekValue}
           onChange={handleSeek}
         />
 

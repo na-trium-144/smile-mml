@@ -41,10 +41,12 @@ export class MMLScheduler {
   private tempoMap: TempoMap;
   public onError: (e: unknown) => void;
   public readonly ticksPerWholeNote: number;
+  private readonly mml: string;
+  private readonly backBufferTicks: number;
 
   // Channel parser states
   private channelStates: Map<number, ChannelState> = new Map();
-  public readonly channels: number[] = []; // Active channel list (0-15)
+  public channels: number[] = []; // Active channel list (0-15)
 
   // Prepared playback events (for Synth)
   private events: PostProcessedEvent[] = [];
@@ -60,6 +62,9 @@ export class MMLScheduler {
   private allFinished: boolean = false;
   private maxTick: number = 0;
   totalDurationSeconds: number = 0;
+  public firstLoopEndTick: number = 0;
+  private hasPruned: boolean = false;
+  private lastPrunedTick: number = 0;
 
   private playbackOffsetSeconds: number = 0;
   private playbackStartAudioTime: number = 0;
@@ -94,11 +99,29 @@ export class MMLScheduler {
   ) {
     this.synth = synth;
     this.instrumentBanks = banks;
+    this.mml = mml;
     this.ticksPerWholeNote = ticksPerWholeNote;
+    this.backBufferTicks = ticksPerWholeNote * 10;
     this.onError = onError;
     this.tempoMap = new TempoMap([], ticksPerWholeNote);
 
-    const { channels, initialKeyShift } = splitMMLChannels(mml);
+    this.initChannelsAndParseFirstPass();
+  }
+
+  private initChannelsAndParseFirstPass(): void {
+    this.channelStates.clear();
+    this.channels = [];
+    this.notesByChannel.clear();
+    this.events = [];
+    this.eventsNeedSort = false;
+    this.nextEventIndex = 0;
+    this.allFinished = false;
+    this.maxTick = 0;
+    this.hasPruned = false;
+    this.lastPrunedTick = 0;
+    this.tempoMap = new TempoMap([], this.ticksPerWholeNote);
+
+    const { channels, initialKeyShift } = splitMMLChannels(this.mml);
 
     for (let ch = 0; ch < 16; ch++) {
       if (channels[ch].trim() !== "") {
@@ -108,7 +131,7 @@ export class MMLScheduler {
         const parser = new MMLChannelParser(
           ch,
           channels[ch],
-          mml,
+          this.mml,
           initialKeyShift,
         );
         const generator = parser.nextEvent();
@@ -130,6 +153,7 @@ export class MMLScheduler {
     // This immediately determines totalDurationSeconds (entire song for finite MML,
     // or first loop duration for infinite MML).
     this.parseFirstPass();
+    this.firstLoopEndTick = this.maxTick;
   }
 
   /**
@@ -560,11 +584,19 @@ export class MMLScheduler {
       this.playbackOffsetSeconds = 0;
     }
 
+    const currentTick = this.tempoMap.secondsToTick(this.playbackOffsetSeconds);
+    if (
+      this.isInfiniteLoop &&
+      this.hasPruned &&
+      currentTick <= this.firstLoopEndTick
+    ) {
+      this.initChannelsAndParseFirstPass();
+    }
+
     this.playbackStartAudioTime =
       this.synth.currentTime - this.playbackOffsetSeconds;
 
     // Ensure lookahead buffer is filled up to current position + lookahead
-    const currentTick = this.tempoMap.secondsToTick(this.playbackOffsetSeconds);
     this.parseUntil(currentTick + this.lookaheadTicks);
     this.ensureEventsSorted();
 
@@ -608,9 +640,14 @@ export class MMLScheduler {
     this.stopProgressLoop();
 
     this.playbackOffsetSeconds = 0;
-    this.nextEventIndex = 0;
     this.synth.stopAll();
     this.synth.resetChannelVolumes();
+
+    if (this.isInfiniteLoop && this.hasPruned) {
+      this.initChannelsAndParseFirstPass();
+    } else {
+      this.nextEventIndex = 0;
+    }
 
     this.notifyProgress();
   }
@@ -624,10 +661,14 @@ export class MMLScheduler {
       this.pause();
     }
 
-    // For infinite loops, allow seeking anywhere >= 0. For finite, clamp to totalDurationSeconds.
-    const maxSec = this.isInfiniteLoop ? Infinity : this.totalDurationSeconds;
+    // For infinite loops, allow seeking anywhere within the first loop. For finite, clamp to totalDurationSeconds.
+    const maxSec = this.totalDurationSeconds;
     this.playbackOffsetSeconds = Math.max(0, Math.min(maxSec, seconds));
     this.synth.stopAll();
+
+    if (this.isInfiniteLoop && this.hasPruned) {
+      this.initChannelsAndParseFirstPass();
+    }
 
     const targetTick = this.tempoMap.secondsToTick(this.playbackOffsetSeconds);
     this.parseUntil(targetTick + this.lookaheadTicks);
@@ -681,6 +722,10 @@ export class MMLScheduler {
       this.parseUntil(currentTick + this.lookaheadTicks);
       this.ensureEventsSorted();
 
+      if (this.isInfiniteLoop) {
+        this.pruneOldData(currentTick);
+      }
+
       const scheduleUntilSeconds =
         currentPlaybackSeconds + this.lookaheadSeconds;
 
@@ -727,6 +772,84 @@ export class MMLScheduler {
     };
 
     window.setTimeout(tickLoop, 0);
+  }
+
+  /**
+   * Prune events and notes older than (currentTick - backBufferTicks)
+   * while preserving the first loop range (tick <= firstLoopEndTick).
+   */
+  public pruneOldData(currentTick: number): void {
+    if (!this.isInfiniteLoop) return;
+
+    const pruneBeforeTick = currentTick - this.backBufferTicks;
+    if (pruneBeforeTick <= this.firstLoopEndTick) {
+      return;
+    }
+
+    if (currentTick - this.lastPrunedTick < this.ticksPerWholeNote) {
+      return;
+    }
+    this.lastPrunedTick = currentTick;
+
+    // 1. Prune this.events
+    let eventStartIndex = -1;
+    let eventEndIndex = -1;
+
+    for (let i = 0; i < this.events.length; i++) {
+      const ev = this.events[i];
+      const evTick = ev.type === "note" ? ev.event.tick : ev.tick;
+      const evEndTick =
+        ev.type === "note" ? ev.event.tick + ev.event.duration : ev.tick;
+
+      if (evTick > this.firstLoopEndTick) {
+        if (eventStartIndex === -1) {
+          eventStartIndex = i;
+        }
+        if (evEndTick < pruneBeforeTick) {
+          eventEndIndex = i + 1;
+        } else {
+          break;
+        }
+      }
+    }
+
+    if (eventStartIndex !== -1 && eventEndIndex > eventStartIndex) {
+      const deleteCount = eventEndIndex - eventStartIndex;
+      this.events.splice(eventStartIndex, deleteCount);
+
+      if (this.nextEventIndex >= eventEndIndex) {
+        this.nextEventIndex -= deleteCount;
+      } else if (this.nextEventIndex > eventStartIndex) {
+        this.nextEventIndex = eventStartIndex;
+      }
+
+      this.hasPruned = true;
+    }
+
+    // 2. Prune this.notesByChannel
+    for (const [, notes] of this.notesByChannel) {
+      let noteStartIndex = -1;
+      let noteEndIndex = -1;
+
+      for (let i = 0; i < notes.length; i++) {
+        const note = notes[i];
+        if (note.tick > this.firstLoopEndTick) {
+          if (noteStartIndex === -1) {
+            noteStartIndex = i;
+          }
+          if (note.tick + note.duration < pruneBeforeTick) {
+            noteEndIndex = i + 1;
+          } else {
+            break;
+          }
+        }
+      }
+
+      if (noteStartIndex !== -1 && noteEndIndex > noteStartIndex) {
+        notes.splice(noteStartIndex, noteEndIndex - noteStartIndex);
+        this.hasPruned = true;
+      }
+    }
   }
 
   private async scheduleNote(

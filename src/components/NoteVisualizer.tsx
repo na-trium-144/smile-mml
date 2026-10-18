@@ -225,10 +225,9 @@ export const NoteVisualizer: FC<NoteVisualizerProps> = ({
           break;
         }
       }
-      for (let ni = 0; ni < chNotes.length; ni++) {
+      for (let ni = lo; ni < chNotes.length; ni++) {
         const note = chNotes[ni];
         if (note.tick > viewEndTick) break; // past right edge
-        // if(note.tick + note.duration < viewStartTick) break;
 
         const x = halfWidth + (note.tick - currentTick) * PIXELS_PER_TICK;
 
