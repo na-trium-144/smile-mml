@@ -22,10 +22,10 @@ export function midiNoteToFrequency(
  * Convert SmileBASIC @D parameter (-128 to 127) to cents (-100 to +100 cents = 1 semitone)
  */
 export function sbDetuneToCents(detune: number): number {
-  return (detune / 128) * 100;
+  return (detune / 64) * 100;
 }
 export function centsToSbDetune(detune: number): number {
-  return (detune / 100) * 128;
+  return (detune / 100) * 64;
 }
 
 /**

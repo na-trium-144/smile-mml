@@ -294,39 +294,37 @@ export const NoteVisualizer: FC<NoteVisualizerProps> = ({
 
         const vel = s.velocity * s.volume;
         const pan = s.pan;
-        let noteNumber: number | undefined = undefined;
+        let noteNumber: number = s.noteNumber;
         let detune: number = Math.round(centsToSbDetune(s.detuneCents));
-        if (p.tick <= currentTick && p.tick + p.duration > currentTick) {
-          let noteNumber128 =
-            s.noteNumber * 128 + Math.round(centsToSbDetune(s.detuneCents));
-          if (
-            s.isPortamento &&
-            s.portamentoTargetNote !== undefined &&
-            s.portamentoTargetDetuneCents !== undefined
-          ) {
-            const nextNoteNumber128 =
-              s.portamentoTargetNote * 128 +
-              Math.round(centsToSbDetune(s.portamentoTargetDetuneCents));
-            noteNumber128 =
-              noteNumber128 +
-              Math.round(
-                ((nextNoteNumber128 - noteNumber128) *
-                  (currentTick - s.tickOffset - p.tick)) /
-                  s.durationTicks,
-              );
-          }
-          if (
-            (s.isPortamento &&
-              s.portamentoTargetNote !== undefined &&
-              s.portamentoTargetNote >= s.noteNumber) ||
-            (!s.isPortamento && s.detuneCents > 0)
-          ) {
-            noteNumber = Math.floor(noteNumber128 / 128);
-            detune = noteNumber128 % 128;
+        let detuneChangedByPortamento = false;
+        if (
+          s.isPortamento &&
+          s.portamentoTargetNote !== undefined &&
+          s.portamentoTargetDetuneCents !== undefined
+        ) {
+          const prevNoteNumber64 = s.noteNumber * 64 + detune;
+          const nextNoteNumber64 =
+            s.portamentoTargetNote * 64 +
+            Math.round(centsToSbDetune(s.portamentoTargetDetuneCents));
+          const currentNoteNumber64 =
+            prevNoteNumber64 +
+            Math.round(
+              (nextNoteNumber64 - prevNoteNumber64) *
+                Math.max(
+                  0,
+                  Math.min(
+                    1,
+                    (currentTick - s.tickOffset - p.tick) / s.durationTicks,
+                  ),
+                ),
+            );
+          detuneChangedByPortamento = prevNoteNumber64 !== currentNoteNumber64;
+          if (nextNoteNumber64 > prevNoteNumber64) {
+            noteNumber = Math.floor((currentNoteNumber64 - detune) / 64);
           } else {
-            noteNumber = Math.ceil(noteNumber128 / 128);
-            detune = noteNumber128 - noteNumber * 128;
+            noteNumber = Math.ceil((currentNoteNumber64 - detune) / 64);
           }
+          detune = currentNoteNumber64 - noteNumber * 64;
         }
 
         ctx2.fillStyle = colorPrimary;
@@ -360,6 +358,9 @@ export const NoteVisualizer: FC<NoteVisualizerProps> = ({
         }
         ctx2.fill();
 
+        if (detuneChangedByPortamento) {
+          ctx2.fillStyle = "#ffffff";
+        }
         ctx2.beginPath();
         if (detune > 0) {
           ctx2.roundRect(
@@ -400,7 +401,7 @@ export const NoteVisualizer: FC<NoteVisualizerProps> = ({
 
         ctx2.fillStyle = "#ffffff";
         ctx2.textAlign = "right";
-        if (noteNumber !== undefined) {
+        if (p.tick <= currentTick && p.tick + p.duration > currentTick) {
           ctx2.fillText(
             noteNumber.toString(),
             VEL_WIDTH + PAN_WIDTH + NOTE_WIDTH,
