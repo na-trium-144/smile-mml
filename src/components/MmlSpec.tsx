@@ -127,8 +127,8 @@ export function MmlSpec() {
           〜 <span className="text-sb3-statement">Q8</span>
         </li>
         <li>
-          デチューン <span className="text-sb3-statement">@D-128</span>(-1半音)
-          〜 <span className="text-sb3-statement">@D127</span>(+1半音)
+          デチューン <span className="text-sb3-statement">@D-128</span>(-2半音)
+          〜 <span className="text-sb3-statement">@D127</span>(+2半音)
         </li>
       </ul>
       <h4>音量・定位</h4>
