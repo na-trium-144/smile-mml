@@ -28,10 +28,8 @@ interface PendingCompound {
 interface ChannelState {
   channelIndex: number;
   parser: MMLChannelParser;
-  generator: Generator<MMLEvent, void, unknown>;
-  nextResult: IteratorResult<MMLEvent, void> | null;
+  nextResult: MMLEvent[]; // use [] instead of null
   pendingCompound: PendingCompound | null;
-  isFinished: boolean;
   firstInfiniteLoopReached: boolean;
 }
 
@@ -111,16 +109,13 @@ export class MMLScheduler {
           mml,
           initialKeyShift,
         );
-        const generator = parser.nextEvent();
-        const nextResult = generator.next();
+        const nextResult = parser.nextEvent();
 
         this.channelStates.set(ch, {
           channelIndex: ch,
           parser,
-          generator,
           nextResult,
           pendingCompound: null,
-          isFinished: Boolean(nextResult.done),
           firstInfiniteLoopReached: false,
         });
       }
@@ -143,14 +138,13 @@ export class MMLScheduler {
 
       for (const [ch, state] of this.channelStates) {
         if (
-          state.isFinished ||
+          state.parser.isFinished ||
           state.firstInfiniteLoopReached ||
-          !state.nextResult ||
-          state.nextResult.done
+          state.nextResult.length === 0
         ) {
           continue;
         }
-        const tick = state.nextResult.value.tick;
+        const tick = state.nextResult[0].tick;
         if (tick < minTick) {
           minTick = tick;
           selectedCh = ch;
@@ -163,21 +157,19 @@ export class MMLScheduler {
       }
 
       const state = this.channelStates.get(selectedCh)!;
-      const event = state.nextResult!.value!;
-
-      if (event.type === "loop" && event.isInfinite) {
+      const events = state.nextResult;
+      if (events[0].type === "loop" && events[0].isInfinite) {
         this.isInfiniteLoop = true;
         state.firstInfiniteLoopReached = true;
         // Do not advance generator past this infinite loop in the first pass
         continue;
       }
 
-      state.nextResult = state.generator.next();
-      if (state.nextResult.done) {
-        state.isFinished = true;
-      }
+      state.nextResult = state.parser.nextEvent();
 
-      this.processEvent(state, event);
+      for (const event of events){
+        this.processEvent(state, event);
+      }
     }
 
     if (!this.isInfiniteLoop) {
@@ -215,10 +207,10 @@ export class MMLScheduler {
       let selectedCh = -1;
 
       for (const [ch, state] of this.channelStates) {
-        if (state.isFinished || !state.nextResult || state.nextResult.done) {
+        if (state.parser.isFinished || state.nextResult.length === 0) {
           continue;
         }
-        const tick = state.nextResult.value.tick;
+        const tick = state.nextResult[0].tick;
         if (tick < minTick) {
           minTick = tick;
           selectedCh = ch;
@@ -240,7 +232,7 @@ export class MMLScheduler {
         // Check if any channel still has an unresolved pending tie or portamento target.
         let hasPending = false;
         for (const [, state] of this.channelStates) {
-          if (state.isFinished) continue;
+          if (state.parser.isFinished) continue;
           if (state.pendingCompound) {
             hasPending = true;
             break;
@@ -254,15 +246,13 @@ export class MMLScheduler {
       }
 
       const state = this.channelStates.get(selectedCh)!;
-      const event = state.nextResult!.value!;
+      const events = state.nextResult
 
-      // Advance generator for selected channel
-      state.nextResult = state.generator.next();
-      if (state.nextResult.done) {
-        state.isFinished = true;
+      state.nextResult = state.parser.nextEvent();
+
+      for (const event of events){
+        this.processEvent(state, event);
       }
-
-      this.processEvent(state, event);
     }
 
     if (this.eventsNeedSort) {
@@ -317,7 +307,6 @@ export class MMLScheduler {
 
     if (event.type === "end") {
       this.flushChannel(state);
-      state.isFinished = true;
       if (event.error) {
         this.onError(event.error);
       }

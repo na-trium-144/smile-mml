@@ -197,8 +197,8 @@ export class MMLChannelParser {
   /**
    * Yields the next event from this channel
    */
-  public *nextEvent(): Generator<MMLEvent, void, unknown> {
-    while (this.pos < this.mmlText.length) {
+  public nextEvent(): MMLEvent[] {
+    while (!this.isFinished && this.pos < this.mmlText.length) {
       let c = this.ld1();
       this.pos++;
 
@@ -304,13 +304,12 @@ export class MMLChannelParser {
         this.mmlText = this.mmlText.slice(0, s) + repl + "▲" + this.mmlText.slice(e);
         if (this.macroExpansionStack.includes(tag)) {
           this.isFinished = true;
-          yield {
+          return [{
             type: 'end',
             channel: this.channelIndex,
             tick: this.currentTick,
             error: `マクロ {${tag}} が自己参照しました`,
-          };
-          return;
+          }];
         }
         this.macroExpansionStack.push(tag);
         this.pos = s;
@@ -352,13 +351,12 @@ export class MMLChannelParser {
         if (loopStartTick === this.currentTick && targetLoopCount === 0) {
           // 0-tick infinite loop はエラー
           this.isFinished = true;
-          yield {
+          return [{
             type: 'end',
             channel: this.channelIndex,
             tick: this.currentTick,
             error: `音符のない無限ループがあります`,
-          };
-          return;
+          }];
         }
 
         // SmileBASICでは有限ループの回数の上限は255だが、SmileMMLではシンタックスハイライトがわかりやすい999にしている
@@ -371,15 +369,14 @@ export class MMLChannelParser {
             this.infiniteLoopCount++;
           }
 
-          yield {
+          return [{
             type: 'loop',
             channel: this.channelIndex,
             tick: this.currentTick,
             loopCount: currentCount,
             targetCount: targetLoopCount,
             isInfinite: targetLoopCount === 0,
-          };
-          continue;
+          }];
         }
 
         // Loop finished: pop start pos
@@ -395,14 +392,13 @@ export class MMLChannelParser {
           this.pos++;
           const { num } = this.gtv();
           this.params.volume = num;
-          yield {
+          return [{
             type: 'control',
             channel: this.channelIndex,
             tick: this.currentTick,
             controller: 7,
             value: num,
-          };
-          continue;
+          }];
         }
         if (nextC === 'D') {
           this.pos++;
@@ -413,13 +409,12 @@ export class MMLChannelParser {
           }
           const { num } = this.gtv();
           this.params.detune = sg * num;
-          yield {
+          return [{
             type: 'pitchBend',
             channel: this.channelIndex,
             tick: this.currentTick,
             value: Math.round((sg * num * 8192) / 128),
-          };
-          continue;
+          }];
         }
         if (nextC === 'E') {
           this.pos++;
@@ -533,13 +528,12 @@ export class MMLChannelParser {
         // Program change: @<num>
         const { num } = this.gtv();
         this.params.program = num;
-        yield {
+        return [{
           type: 'program',
           channel: this.channelIndex,
           tick: this.currentTick,
           program: num,
-        };
-        continue;
+        }];
       }
 
       // Vocal text *lyric,
@@ -699,38 +693,37 @@ export class MMLChannelParser {
         const gateDur = trailingPortamento ? 0 : Math.max(1, Math.round(noteDuration * gateRatio));
         const { envelope, modulation } = this.cloneParams();
 
-        for (const chordNote of this.chordNotes) {
-          yield {
-            type: 'note',
-            channel: this.channelIndex,
-            tick: startTick,
-            noteNumber: chordNote.noteNumber,
-            baseOctave: chordNote.baseOctave,
-            baseNoteIndex: chordNote.baseNoteIndex,
-            totalAccidentials: chordNote.totalAccidentials,
-            duration: noteDuration,
-            gateDuration: gateDur,
-            noteValue: v,
-            totalDots,
-            velocity: this.params.velocity,
-            volume: this.params.volume,
-            pan: this.params.pan,
-            program: this.params.program,
-            detune: this.params.detune,
-            gate: this.params.gate,
-            envelope,
-            modulation,
-            isTie: this.ld1() === '&',
-            isPortamento: hasPortamento,
-          };
-        }
+        const events = this.chordNotes.map((chordNote) => ({
+          type: 'note',
+          channel: this.channelIndex,
+          tick: startTick,
+          noteNumber: chordNote.noteNumber,
+          baseOctave: chordNote.baseOctave,
+          baseNoteIndex: chordNote.baseNoteIndex,
+          totalAccidentials: chordNote.totalAccidentials,
+          duration: noteDuration,
+          gateDuration: gateDur,
+          noteValue: v,
+          totalDots,
+          velocity: this.params.velocity,
+          volume: this.params.volume,
+          pan: this.params.pan,
+          program: this.params.program,
+          detune: this.params.detune,
+          gate: this.params.gate,
+          envelope,
+          modulation,
+          isTie: this.ld1() === '&',
+          isPortamento: hasPortamento,
+        } as const))
 
         if (!trailingPortamento) {
           this.currentTick += noteDuration;
         }
         this.inChord = false;
         this.chordNotes = [];
-        continue;
+
+        return events;
       } else if (this.inChord) {
         // Collect note into chordNotes
         if (c >= 'A' && c <= 'G') {
@@ -765,7 +758,10 @@ export class MMLChannelParser {
 
         const clampedNote = Math.max(0, Math.min(127, n));
 
-        yield {
+        if (!trailingPortamento) {
+          this.currentTick += noteDuration;
+        }
+        return [{
           type: 'note',
           channel: this.channelIndex,
           tick: startTick,
@@ -787,12 +783,7 @@ export class MMLChannelParser {
           modulation,
           isTie: this.ld1() === '&',
           isPortamento: hasPortamento,
-        };
-
-        if (!trailingPortamento) {
-          this.currentTick += noteDuration;
-        }
-        continue;
+        }];
       }
 
       // Rest (R)
@@ -806,15 +797,15 @@ export class MMLChannelParser {
           remVd--;
         }
 
-        yield {
+        const startTick = this.currentTick;
+        this.currentTick += restDuration;
+
+        return [{
           type: 'rest',
           channel: this.channelIndex,
-          tick: this.currentTick,
+          tick: startTick,
           duration: restDuration,
-        };
-
-        this.currentTick += restDuration;
-        continue;
+        }];
       }
 
       // Direct Note Number N<note>[,<len>]
@@ -836,7 +827,9 @@ export class MMLChannelParser {
 
         const noteNum = Math.max(0, Math.min(127, v + this.params.keyShift));
 
-        yield {
+        this.currentTick += noteDuration;
+
+        return [{
           type: 'note',
           channel: this.channelIndex,
           tick: startTick,
@@ -858,20 +851,16 @@ export class MMLChannelParser {
           modulation,
           isTie: this.ld1() === '&',
           isPortamento: hasPortamento,
-        };
-
-        this.currentTick += noteDuration;
-        continue;
+        }];
       }
 
       // Tempo T<bpm>
       if (c === 'T') {
-        yield {
+        return [{
           type: 'tempo',
           tick: this.currentTick,
           bpm: v,
-        };
-        continue;
+        }]
       }
 
       // Length L<len>
@@ -902,14 +891,13 @@ export class MMLChannelParser {
       // Pan P<pan>
       if (c === 'P') {
         this.params.pan = v;
-        yield {
+        return [{
           type: 'control',
           channel: this.channelIndex,
           tick: this.currentTick,
           controller: 10,
           value: v,
-        };
-        continue;
+        }];
       }
 
       // Key shift K<shift>
@@ -920,11 +908,11 @@ export class MMLChannelParser {
     }
 
     this.isFinished = true;
-    yield {
+    return [{
       type: 'end',
       channel: this.channelIndex,
       tick: this.currentTick,
-    };
+    }];
   }
 }
 
