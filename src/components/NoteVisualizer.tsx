@@ -212,7 +212,7 @@ export const NoteVisualizer: FC<NoteVisualizerProps> = ({
           if (nextNote) {
             ctx.save();
             ctx.fillStyle = colorBase100;
-            ctx.globalAlpha = 0.8;
+            ctx.globalAlpha = 0.5;
             ctx.fillRect(
               halfWidth + (nextNote.tick - currentTick) * PIXELS_PER_TICK,
               yBase,
