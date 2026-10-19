@@ -53,6 +53,7 @@ export class BasicWaveBank implements InstrumentBank {
     name: string;
     ignoreKey?: boolean;
     keyShift?: number;
+    attenuation?: number;
     envelope?: ADSRParams;
   }[] {
     return [
@@ -63,6 +64,7 @@ export class BasicWaveBank implements InstrumentBank {
             type: "psg",
             duty: PSG_DUTY_CYCLES[p - 144],
             name: `PSG ${PSG_DUTY_CYCLES[p - 144] * 100}%`,
+            attenuation: 0.7,
           }) as const,
       ),
       [257, 258, 259, 263].map(
@@ -72,6 +74,7 @@ export class BasicWaveBank implements InstrumentBank {
             type: "psg",
             duty: 0.5,
             name: `PSG 50% with Envelope`,
+            attenuation: 0.4,
             envelope: {
               257: undefined,
               258: convertSmileBASICEnvelope({ a: 95, d: 0, s: 127, r: 124 }),
@@ -87,6 +90,7 @@ export class BasicWaveBank implements InstrumentBank {
             type: "noise",
             name: "White Noise",
             ignoreKey: true,
+            attenuation: 0.4,
           }) as const,
       ),
       // mkII仕様のノイズを@159に登録しておく。
@@ -98,6 +102,7 @@ export class BasicWaveBank implements InstrumentBank {
             type: "noise",
             name: "White Noise",
             ignoreKey: false,
+            attenuation: 0.7,
           }) as const,
       ),
       [256, 297].map(
@@ -106,6 +111,7 @@ export class BasicWaveBank implements InstrumentBank {
             program: p,
             type: "sawtooth",
             name: "Sawtooth Wave",
+            attenuation: 0.4,
           }) as const,
       ),
       [344].map(
@@ -114,6 +120,7 @@ export class BasicWaveBank implements InstrumentBank {
             program: p,
             type: "sine",
             name: "Sine Wave",
+            attenuation: 0.7,
             keyShift: 12,
           }) as const,
       ),
@@ -147,7 +154,7 @@ export class BasicWaveBank implements InstrumentBank {
           imag: harmonics.imag,
           defaultEnvelope: programInfo.envelope ?? BasicWaveBank.defaultPsgEnvelope,
           defaultPan: 0,
-          attenuation: 1,
+          attenuation: programInfo.attenuation ?? 1,
           keyShift: programInfo.keyShift,
         };
       }
@@ -161,7 +168,7 @@ export class BasicWaveBank implements InstrumentBank {
           imag: harmonics.imag,
           defaultEnvelope: BasicWaveBank.defaultPsgEnvelope,
           defaultPan: 0,
-          attenuation: 1,
+          attenuation: programInfo.attenuation ?? 1,
           keyShift: programInfo.keyShift,
         };
       }
@@ -176,7 +183,7 @@ export class BasicWaveBank implements InstrumentBank {
           imag: harmonics.imag,
           defaultEnvelope: BasicWaveBank.defaultPsgEnvelope,
           defaultPan: 0,
-          attenuation: 1,
+          attenuation: programInfo.attenuation ?? 1,
           keyShift: programInfo.keyShift,
         };
       }
@@ -187,8 +194,7 @@ export class BasicWaveBank implements InstrumentBank {
           sampleRate: BasicWaveBank.sampleRate,
           defaultEnvelope: BasicWaveBank.defaultPsgEnvelope,
           defaultPan: 0,
-          // 3号のノイズは音が小さい
-          attenuation: programInfo.ignoreKey ? 0.5 : 1,
+          attenuation: programInfo.attenuation ?? 1,
           loop: true,
           loopStart: 0,
           loopEnd: BasicWaveBank.NOISE_PCM.length,
