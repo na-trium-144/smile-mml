@@ -28,10 +28,8 @@ interface PendingCompound {
 interface ChannelState {
   channelIndex: number;
   parser: MMLChannelParser;
-  generator: Generator<MMLEvent, void, unknown>;
-  nextResult: IteratorResult<MMLEvent, void> | null;
+  nextResult: MMLEvent[]; // use [] instead of null
   pendingCompound: PendingCompound | null;
-  isFinished: boolean;
   firstInfiniteLoopReached: boolean;
 }
 
@@ -40,7 +38,16 @@ export class MMLScheduler {
   private instrumentBanks: InstrumentBank[];
   private tempoMap: TempoMap;
   public onError: (e: unknown) => void;
-  public readonly ticksPerWholeNote: number;
+
+  static readonly ticksPerWholeNote = 192;
+
+  // Snapshot of the first loop (never modified after initial pass)
+  private firstLoopEvents: PostProcessedEvent[] = [];
+  private firstLoopNotesByChannel: Map<number, PostProcessedNote[]> = new Map();
+  private firstLoopChannelStates: Map<number, ChannelState> = new Map();
+  public firstLoopEndTick: number = 0;
+  private hasPruned: boolean = false;
+  private lastPrunedTick: number = 0;
 
   // Channel parser states
   private channelStates: Map<number, ChannelState> = new Map();
@@ -69,6 +76,7 @@ export class MMLScheduler {
   private readonly scheduleIntervalMs = 25; // 25ms timer interval
   // NoteVisualizer requires +/- 128 ticks. Default lookahead ensures at least visualizer range.
   private readonly lookaheadTicks = 256;
+  private readonly backBufferTicks = 256;
 
   private scheduleTimerId: number | null = null;
   private progressTimerId: number | null = null;
@@ -89,14 +97,12 @@ export class MMLScheduler {
     synth: SynthEngine,
     banks: InstrumentBank[],
     mml: string,
-    ticksPerWholeNote: number = 192,
     onError: (e: unknown) => void,
   ) {
     this.synth = synth;
     this.instrumentBanks = banks;
-    this.ticksPerWholeNote = ticksPerWholeNote;
     this.onError = onError;
-    this.tempoMap = new TempoMap([], ticksPerWholeNote);
+    this.tempoMap = new TempoMap([], MMLScheduler.ticksPerWholeNote);
 
     const { channels, initialKeyShift } = splitMMLChannels(mml);
 
@@ -111,16 +117,13 @@ export class MMLScheduler {
           mml,
           initialKeyShift,
         );
-        const generator = parser.nextEvent();
-        const nextResult = generator.next();
+        const nextResult = parser.nextEvent();
 
         this.channelStates.set(ch, {
           channelIndex: ch,
           parser,
-          generator,
           nextResult,
           pendingCompound: null,
-          isFinished: Boolean(nextResult.done),
           firstInfiniteLoopReached: false,
         });
       }
@@ -130,6 +133,18 @@ export class MMLScheduler {
     // This immediately determines totalDurationSeconds (entire song for finite MML,
     // or first loop duration for infinite MML).
     this.parseFirstPass();
+    this.firstLoopEndTick = this.maxTick;
+
+    // Save snapshot of first loop so seek/stop can restore instantly without re-parsing
+    if (this.isInfiniteLoop) {
+      this.firstLoopEvents = [...this.events];
+      for (const ch of this.channels) {
+        this.firstLoopNotesByChannel.set(ch, [...(this.notesByChannel.get(ch) ?? [])]);
+      }
+      for (const [ch, state] of this.channelStates) {
+        this.firstLoopChannelStates.set(ch, this.cloneChannelState(state));
+      }
+    }
   }
 
   /**
@@ -143,14 +158,13 @@ export class MMLScheduler {
 
       for (const [ch, state] of this.channelStates) {
         if (
-          state.isFinished ||
+          state.parser.isFinished ||
           state.firstInfiniteLoopReached ||
-          !state.nextResult ||
-          state.nextResult.done
+          state.nextResult.length === 0
         ) {
           continue;
         }
-        const tick = state.nextResult.value.tick;
+        const tick = state.nextResult[0].tick;
         if (tick < minTick) {
           minTick = tick;
           selectedCh = ch;
@@ -163,21 +177,19 @@ export class MMLScheduler {
       }
 
       const state = this.channelStates.get(selectedCh)!;
-      const event = state.nextResult!.value!;
-
-      if (event.type === "loop" && event.isInfinite) {
+      const events = state.nextResult;
+      if (events[0].type === "loop" && events[0].isInfinite) {
         this.isInfiniteLoop = true;
         state.firstInfiniteLoopReached = true;
         // Do not advance generator past this infinite loop in the first pass
         continue;
       }
 
-      state.nextResult = state.generator.next();
-      if (state.nextResult.done) {
-        state.isFinished = true;
-      }
+      state.nextResult = state.parser.nextEvent();
 
-      this.processEvent(state, event);
+      for (const event of events){
+        this.processEvent(state, event);
+      }
     }
 
     if (!this.isInfiniteLoop) {
@@ -215,10 +227,10 @@ export class MMLScheduler {
       let selectedCh = -1;
 
       for (const [ch, state] of this.channelStates) {
-        if (state.isFinished || !state.nextResult || state.nextResult.done) {
+        if (state.parser.isFinished || state.nextResult.length === 0) {
           continue;
         }
-        const tick = state.nextResult.value.tick;
+        const tick = state.nextResult[0].tick;
         if (tick < minTick) {
           minTick = tick;
           selectedCh = ch;
@@ -240,7 +252,7 @@ export class MMLScheduler {
         // Check if any channel still has an unresolved pending tie or portamento target.
         let hasPending = false;
         for (const [, state] of this.channelStates) {
-          if (state.isFinished) continue;
+          if (state.parser.isFinished) continue;
           if (state.pendingCompound) {
             hasPending = true;
             break;
@@ -254,15 +266,13 @@ export class MMLScheduler {
       }
 
       const state = this.channelStates.get(selectedCh)!;
-      const event = state.nextResult!.value!;
+      const events = state.nextResult
 
-      // Advance generator for selected channel
-      state.nextResult = state.generator.next();
-      if (state.nextResult.done) {
-        state.isFinished = true;
+      state.nextResult = state.parser.nextEvent();
+
+      for (const event of events){
+        this.processEvent(state, event);
       }
-
-      this.processEvent(state, event);
     }
 
     if (this.eventsNeedSort) {
@@ -317,7 +327,6 @@ export class MMLScheduler {
 
     if (event.type === "end") {
       this.flushChannel(state);
-      state.isFinished = true;
       if (event.error) {
         this.onError(event.error);
       }
@@ -560,11 +569,19 @@ export class MMLScheduler {
       this.playbackOffsetSeconds = 0;
     }
 
+    const currentTick = this.tempoMap.secondsToTick(this.playbackOffsetSeconds);
+    if (
+      this.isInfiniteLoop &&
+      this.hasPruned &&
+      currentTick <= this.firstLoopEndTick
+    ) {
+      this.restoreFirstLoop();
+    }
+
     this.playbackStartAudioTime =
       this.synth.currentTime - this.playbackOffsetSeconds;
 
     // Ensure lookahead buffer is filled up to current position + lookahead
-    const currentTick = this.tempoMap.secondsToTick(this.playbackOffsetSeconds);
     this.parseUntil(currentTick + this.lookaheadTicks);
     this.ensureEventsSorted();
 
@@ -608,9 +625,14 @@ export class MMLScheduler {
     this.stopProgressLoop();
 
     this.playbackOffsetSeconds = 0;
-    this.nextEventIndex = 0;
     this.synth.stopAll();
     this.synth.resetChannelVolumes();
+
+    if (this.isInfiniteLoop && this.hasPruned) {
+      this.restoreFirstLoop();
+    } else {
+      this.nextEventIndex = 0;
+    }
 
     this.notifyProgress();
   }
@@ -624,10 +646,14 @@ export class MMLScheduler {
       this.pause();
     }
 
-    // For infinite loops, allow seeking anywhere >= 0. For finite, clamp to totalDurationSeconds.
-    const maxSec = this.isInfiniteLoop ? Infinity : this.totalDurationSeconds;
+    // For infinite loops, allow seeking anywhere within the first loop. For finite, clamp to totalDurationSeconds.
+    const maxSec = this.totalDurationSeconds;
     this.playbackOffsetSeconds = Math.max(0, Math.min(maxSec, seconds));
     this.synth.stopAll();
+
+    if (this.isInfiniteLoop && this.hasPruned) {
+      this.restoreFirstLoop();
+    }
 
     const targetTick = this.tempoMap.secondsToTick(this.playbackOffsetSeconds);
     this.parseUntil(targetTick + this.lookaheadTicks);
@@ -681,6 +707,10 @@ export class MMLScheduler {
       this.parseUntil(currentTick + this.lookaheadTicks);
       this.ensureEventsSorted();
 
+      if (this.isInfiniteLoop) {
+        this.pruneOldData(currentTick);
+      }
+
       const scheduleUntilSeconds =
         currentPlaybackSeconds + this.lookaheadSeconds;
 
@@ -727,6 +757,88 @@ export class MMLScheduler {
     };
 
     window.setTimeout(tickLoop, 0);
+  }
+
+  private cloneChannelState(state: ChannelState): ChannelState {
+    return {
+      channelIndex: state.channelIndex,
+      parser: state.parser.clone(),
+      nextResult: structuredClone(state.nextResult),
+      pendingCompound: structuredClone(state.pendingCompound),
+      firstInfiniteLoopReached: state.firstInfiniteLoopReached,
+    };
+  }
+
+  /**
+   * Restores events and notes from the first loop snapshot,
+   * and resets channel states to the end of the first loop.
+   */
+  private restoreFirstLoop(): void {
+    // 1. Restore events from first loop snapshot (no re-parsing needed!)
+    this.events = [...this.firstLoopEvents];
+    this.eventsNeedSort = false;
+    this.nextEventIndex = 0;
+
+    // 2. Restore notesByChannel from first loop snapshot (no re-parsing needed!)
+    for (const ch of this.channels) {
+      const saved = this.firstLoopNotesByChannel.get(ch) ?? [];
+      this.notesByChannel.set(ch, [...saved]);
+    }
+
+    // 3. Restore channelStates from snapshot
+    this.channelStates.clear();
+    for (const [ch, savedState] of this.firstLoopChannelStates) {
+      this.channelStates.set(ch, this.cloneChannelState(savedState));
+    }
+
+    this.hasPruned = false;
+    this.lastPrunedTick = 0;
+  }
+
+  /**
+   * Prune events and notes older than (currentTick - backBufferTicks)
+   * using shift from the front of the active buffers.
+   */
+  public pruneOldData(currentTick: number): void {
+    if (!this.isInfiniteLoop) return;
+
+    const pruneBeforeTick = currentTick - this.backBufferTicks;
+    if (pruneBeforeTick <= 0) {
+      return;
+    }
+
+    if (currentTick - this.lastPrunedTick < MMLScheduler.ticksPerWholeNote) {
+      return;
+    }
+    this.lastPrunedTick = currentTick;
+
+    // 1. Prune this.events from the front using shift
+    while (this.events.length > 0) {
+      const ev = this.events[0];
+      const evEndTick =
+        ev.type === "note" ? ev.event.tick + ev.event.duration : ev.tick;
+
+      if (evEndTick < pruneBeforeTick) {
+        this.events.shift();
+        this.nextEventIndex = Math.max(0, this.nextEventIndex - 1);
+        this.hasPruned = true;
+      } else {
+        break;
+      }
+    }
+
+    // 2. Prune this.notesByChannel from the front using shift
+    for (const [, notes] of this.notesByChannel) {
+      while (notes.length > 0) {
+        const note = notes[0];
+        if (note.tick + note.duration < pruneBeforeTick) {
+          notes.shift();
+          this.hasPruned = true;
+        } else {
+          break;
+        }
+      }
+    }
   }
 
   private async scheduleNote(

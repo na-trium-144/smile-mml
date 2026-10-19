@@ -19,8 +19,6 @@ import { usePlaylist } from "./Playlist.js";
 
 type PlaybackState = null | "playing" | "paused";
 
-const TICKS_PER_WHOLE_NOTE = 192;
-
 const formatTime = (sec: number) => {
   const m = Math.floor(sec / 60);
   const s = Math.floor(sec % 60);
@@ -85,7 +83,6 @@ export function AudioPlayer() {
       synth,
       currentBanks,
       mml,
-      TICKS_PER_WHOLE_NOTE,
       (e) => {
         console.error("MMLScheduler error:", e);
         setErrors((prev) => {
@@ -161,8 +158,6 @@ export function AudioPlayer() {
     setCurrentTime(seekTo);
   }, []);
 
-  const seekMax = Math.max(totalTime, currentTime) || 1;
-
   return (
     <div className="card card-border w-full">
       <div className="card-body gap-4">
@@ -207,9 +202,9 @@ export function AudioPlayer() {
             type="range"
             className="max-sm:hidden range range-primary range-xs flex-1"
             min={0}
-            max={seekMax}
+            max={totalTime}
             step={0.01}
-            value={currentTime}
+            value={Math.min(totalTime, currentTime)}
             onChange={handleSeek}
           />
           <span className="sm:hidden mx-2">/</span>
@@ -221,9 +216,9 @@ export function AudioPlayer() {
           type="range"
           className="sm:hidden w-full range range-primary range-xs"
           min={0}
-          max={seekMax}
+          max={totalTime}
           step={0.01}
-          value={currentTime}
+          value={Math.min(totalTime, currentTime)}
           onChange={handleSeek}
         />
 
