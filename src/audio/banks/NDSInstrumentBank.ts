@@ -209,7 +209,7 @@ export class NDSInstrumentBank implements InstrumentBank {
         imag: harmonics.imag,
         defaultEnvelope: this.convertNdsEnvelope(direct.noteInfo),
         defaultPan: (direct.noteInfo.pan - 64) / 64,
-        attenuation: 1,
+        attenuation: 0.7,
       };
       return voice;
     }

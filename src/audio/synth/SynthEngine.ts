@@ -342,7 +342,8 @@ export class SynthEngine {
     let wave = this.periodicWaveCache.get(id);
     if (!wave) {
       wave = this.ctx.createPeriodicWave(real, imag, {
-        disableNormalization: false,
+        // falseにすると、なぜか@144と@147で音量が違う
+        disableNormalization: true,
       });
       this.periodicWaveCache.set(id, wave);
     }
