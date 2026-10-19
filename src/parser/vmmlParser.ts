@@ -56,6 +56,18 @@ export class MMLChannelParser {
   // Stop flag when infinite loop detected
   public infiniteLoopCount: number = 0;
 
+  public clone(): MMLChannelParser {
+    const copy = new MMLChannelParser(
+      this.channelIndex,
+      '',
+      this.fullMML,
+      this.params.keyShift,
+    );
+    Object.assign(copy, structuredClone(this));
+
+    return copy;
+  }
+
   constructor(
     channelIndex: number,
     channelText: string,
