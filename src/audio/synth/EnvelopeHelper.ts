@@ -39,8 +39,7 @@ export class EnvelopeHelper {
     );
     this.releaseTime = Math.max(
       0.001,
-      Math.log(this.sustainLevel) -
-        Math.log(minLevel) / Math.log(envelope.releaseRate),
+      (Math.log(this.sustainLevel) - Math.log(minLevel)) / Math.log(envelope.releaseRate),
     );
 
     this.points = [];
@@ -154,7 +153,7 @@ export class EnvelopeHelper {
     ctx.lineTo(toX(prevPt.time + (this.points.at(-1)!.time - prevPt.time) * 0.25), toY(this.points.at(-1)!.level));
 
     // 塗りつぶし描画（オプション）
-    ctx.lineTo(toX(this.points.at(-1)!.time), toY(0));
+    ctx.lineTo(toX(prevPt.time + (this.points.at(-1)!.time - prevPt.time) * 0.25), toY(0));
     ctx.lineTo(toX(0), toY(0));
     ctx.closePath();
     ctx.fill();
