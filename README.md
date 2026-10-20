@@ -1,32 +1,39 @@
-# React + TypeScript + Vite
+# SmileMML
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+SmileBASIC3 compatible MML player / visualizer.
+https://smilemml.natrium144.org/
 
-Currently, two official plugins are available:
+* Compatible with the MML syntax of SmileBASIC3 and reproduces the behavior of all parameters, including envelopes (`@E`) and modulation (`@MA`, `@MP`, `@ML`).
+* Visualizes the notes and parameters of each channel in real time. It also allows pausing and resuming playback of MML.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+### Note
 
-## React Compiler
+* SmileMML has looser syntax constraints than SmileBASIC3, accepting parameters outside the specified range and sometimes not displaying errors even with grammatical errors.
+* The sound is not identical to SmileBASIC3; it uses free soundfonts as a substitute.
+  * (If you have a PetitComputer ROM obtained by some means, you can also use its sound source for playback.)
+* MML and sound data loaded by SmileMML are not sent to a server or externally; all processing is done within this browser.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## Development
 
-## Expanding the Oxlint configuration
+Install Node.js and pnpm 12.
 
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
-
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
+```sh
+pnpm install
+pnpm run dev
 ```
 
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+## License
+
+© 2026 na-trium-144
+
+SmileMML is licensed under GPL-3.0. See [LICENSE](./LICENSE)
+
+MML parsing is based on Visual MML ver1.1.2 (© 2019-2020 na-trium-144 _a.k.a._ Na).
+
+Audio processing is implemented referencing the code of
+* [DanielPXL/nitro-play](https://github.com/DanielPXL/nitro-play) (GPL-3.0)
+* [marmooo/midy](https://github.com/marmooo/midy) (Apache-2.0)
+
+The soundfont included under [./public](./public) is a compressed version of the following, converted to sf3 using [sf3convert](https://github.com/musescore/sftools):
+* [GeneralUser GS](https://schristiancollins.com/generaluser.php) 2.0.3
+* FluidR3_GM (MIT)
