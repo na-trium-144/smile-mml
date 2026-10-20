@@ -9,6 +9,7 @@ import { extractMacro } from "../parser";
 import sample1 from "../samples/sample1.mml?raw";
 import sample2 from "../samples/get_started_merged.mml?raw";
 import sample3 from "../samples/NA_NN.MML?raw";
+import { extractSmileBasicMML } from "../parser/smilebasicPrg";
 
 interface MmlFile {
   isSample?: boolean;
@@ -23,6 +24,7 @@ interface Playlist {
   loadFile: (file: File) => void;
   newFile: () => void;
   updateContent: (content: string) => void;
+  reParseAsPrg: () => void;
 }
 const PlaylistContext = createContext<Playlist | null>(null);
 
@@ -42,22 +44,39 @@ export function PlaylistProvider({ children }: { children: ReactNode }) {
   ]);
   const [currentIndex, setCurrentIndex] = useState<number>(0);
 
-  const loadFile = useCallback((file: File) => {
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const content = event.target?.result as string;
-      setFiles((prev) =>
-        prev.concat([
-          {
-            name: extractMacro(content, "TITLE", false) || file.name,
-            content: content,
-          },
-        ]),
-      );
-      setCurrentIndex(files.length);
-    };
-    reader.readAsText(file);
-  }, [files]);
+  const loadFile = useCallback(
+    (file: File) => {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const content = event.target?.result as string;
+        const parsedAsPrg = extractSmileBasicMML(content);
+        if (parsedAsPrg.length >= 1) {
+          setFiles((prev) =>
+            prev.concat(
+              parsedAsPrg.map(({ label, content }) => ({
+                name:
+                  extractMacro(content, "TITLE", false) || label || file.name,
+                content: content,
+              })),
+            ),
+          );
+          setCurrentIndex(files.length);
+        } else {
+          setFiles((prev) =>
+            prev.concat([
+              {
+                name: extractMacro(content, "TITLE", false) || file.name,
+                content: content,
+              },
+            ]),
+          );
+          setCurrentIndex(files.length);
+        }
+      };
+      reader.readAsText(file);
+    },
+    [files],
+  );
 
   const newFile = useCallback(() => {
     setFiles((prev) => prev.concat([{ name: "", content: "" }]));
@@ -69,6 +88,23 @@ export function PlaylistProvider({ children }: { children: ReactNode }) {
     currentFile = files.at(-1)!;
     setCurrentIndex(files.length - 1);
   }
+
+  const reParseAsPrg = useCallback(() => {
+    const parsedAsPrg = extractSmileBasicMML(currentFile.content);
+    if (!currentFile.isSample && parsedAsPrg.length >= 1) {
+      setFiles((prev) =>
+        [
+          ...prev.slice(0, currentIndex),
+          ...parsedAsPrg.map(({ label, content }) => ({
+            name:
+              extractMacro(content, "TITLE", false) || label || currentFile.name,
+            content: content,
+          })),
+          ...prev.slice(currentIndex + 1),
+        ]
+      );
+    }
+  }, [currentIndex, currentFile])
 
   const updateContent = useCallback(
     (content: string) => {
@@ -112,6 +148,7 @@ export function PlaylistProvider({ children }: { children: ReactNode }) {
         loadFile,
         newFile,
         updateContent,
+        reParseAsPrg,
       }}
     >
       {children}

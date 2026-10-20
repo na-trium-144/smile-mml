@@ -117,7 +117,7 @@ function SidebarContent() {
       <div className="divider" />
       <h3 className="font-semibold text-lg">ファイルをインポート</h3>
       <p className="mx-2 text-paragraph text-sm">
-        .MML ファイルを読み込むことができます。
+        DATA 文または BGMSET 文を含む SmileBASIC プログラム、または MML ファイルを読み込みます。
       </p>
       <div className="flex justify-center">
         <label
