@@ -40,12 +40,12 @@ export const MMLEditor = () => {
       </summary>
       <div className="collapse-content">
         <div className="flex flex-wrap flex-row mb-2 gap-1">
-          {parsedAsPrg.length >= 1 && (
+          {!currentFile.isSample && parsedAsPrg.length >= 1 && (
             <button className="btn btn-primary btn-sm" onClick={reParseAsPrg}>
               DATA 文から MML を取り出す
             </button>
           )}
-          {normalizedMML !== mml && (
+          {!currentFile.isSample && normalizedMML !== mml && (
             <button
               className="btn btn-primary btn-sm"
               onClick={() => updateContent(normalizedMML)}
