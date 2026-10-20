@@ -6,6 +6,9 @@ interface Props {
   children: ReactNode;
 }
 
+declare const _GIT_COMMIT_: string;
+declare const _GIT_COMMIT_COUNT_: string;
+
 export function WithHeaderAndSidebar(props: Props) {
   return (
     <>
@@ -36,7 +39,19 @@ export function WithHeaderAndSidebar(props: Props) {
           <img src="/favicon-white.svg" className="size-10 mr-2" />
           SmileMML
         </h1>
-        <div className="navbar-end"></div>
+        <div className="relative navbar-end self-end">
+          <a
+            className={clsx(
+              "max-sm:absolute max-sm:-bottom-2 max-sm:right-0",
+              "inline-block w-max text-sm opacity-75 link link-hover",
+            )}
+            href={`https://github.com/na-trium-144/smile-mml/commits/${_GIT_COMMIT_}`}
+            target="_blank"
+          >
+            Build {_GIT_COMMIT_COUNT_}{" "}
+            <span className="text-xs">({_GIT_COMMIT_})</span>
+          </a>
+        </div>
       </header>
 
       <div className="drawer lg:drawer-open">
