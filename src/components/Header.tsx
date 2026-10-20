@@ -8,7 +8,7 @@ interface Props {
 
 declare const _GIT_COMMIT_: string;
 declare const _GIT_COMMIT_COUNT_: string;
-
+declare const _BUILD_DATE_: string;
 export function WithHeaderAndSidebar(props: Props) {
   return (
     <>
@@ -16,7 +16,7 @@ export function WithHeaderAndSidebar(props: Props) {
         <div className="navbar-start">
           <label
             htmlFor="SidebarToggle"
-            className="lg:hidden btn btn-ghost w-max"
+            className="lg:hidden btn btn-ghost w-max max-sm:px-2"
           >
             <svg
               aria-label="Menu"
@@ -42,14 +42,17 @@ export function WithHeaderAndSidebar(props: Props) {
         <div className="relative navbar-end self-end">
           <a
             className={clsx(
-              "max-sm:absolute max-sm:-bottom-2 max-sm:right-0",
+              "max-sm:absolute max-sm:-bottom-2 max-sm:-right-1",
               "inline-block w-max text-sm opacity-75 link link-hover",
             )}
             href={`https://github.com/na-trium-144/smile-mml/commits/${_GIT_COMMIT_}`}
             target="_blank"
           >
             Build {_GIT_COMMIT_COUNT_}{" "}
-            <span className="text-xs">({_GIT_COMMIT_})</span>
+            <span className="text-xs">
+              ({_GIT_COMMIT_},{" "}
+              {new Date(_BUILD_DATE_).toLocaleDateString("ja-JP")})
+            </span>
           </a>
         </div>
       </header>
@@ -117,7 +120,8 @@ function SidebarContent() {
       <div className="divider" />
       <h3 className="font-semibold text-lg">ファイルをインポート</h3>
       <p className="mx-2 text-paragraph text-sm">
-        DATA 文または BGMSET 文を含む SmileBASIC プログラム、または MML ファイルを読み込みます。
+        DATA 文または BGMSET 文を含む SmileBASIC プログラム、または MML
+        ファイルを読み込みます。
       </p>
       <div className="flex justify-center">
         <label

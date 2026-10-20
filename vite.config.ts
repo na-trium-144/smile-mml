@@ -32,5 +32,6 @@ export default defineConfig({
         encoding: "utf8",
       }).trim(),
     ),
+    _BUILD_DATE_: JSON.stringify(new Date()),
   },
 });
