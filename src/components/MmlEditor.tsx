@@ -1,6 +1,6 @@
 import AceEditor from "react-ace";
-import "ace-builds/src-noconflict/theme-twilight";
-import "ace-builds/src-noconflict/ext-searchbox";
+import "ace-builds/src-min-noconflict/theme-twilight";
+import "ace-builds/src-min-noconflict/ext-searchbox";
 import "./MmlHighlightRules.js";
 import { useEffect, useRef, useState } from "react";
 import type Ace from "ace-builds";

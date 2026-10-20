@@ -8,6 +8,18 @@ export default defineConfig({
   plugins: [react(), tailwindcss()],
   build: {
     license: { fileName: "third-party-licenses.json" },
+    rolldownOptions: {
+      output: {
+        codeSplitting: {
+          groups: [
+            {
+              test: /node_modules/,
+              name: "libs",
+            },
+          ],
+        },
+      },
+    },
   },
   define: {
     _GIT_COMMIT_: JSON.stringify(
