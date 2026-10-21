@@ -14,7 +14,7 @@ export default defineConfig({
       devOptions: {
         enabled: false,
       },
-      includeAssets: ["*.sf3.gz", "*.svg"],
+      includeAssets: ["*.svg"],
       workbox: {
         runtimeCaching: [
           {

@@ -126,16 +126,23 @@ export const InstrumentProvider: FC<{ children: ReactNode }> = ({
     [],
   );
 
-  const selectSdat = useCallback((path: string) => {
-    if (ndsBufferRef.current && path) {
-      const ndsBank = new NDSInstrumentBank(ndsBufferRef.current, ndsName ?? "", path);
-      setSelectedNdsSdat(path);
-      setNdsBank((prev) => {
-        prev?.dispose();
-        return ndsBank;
-      });
-    }
-  }, [ndsName]);
+  const selectSdat = useCallback(
+    (path: string) => {
+      if (ndsBufferRef.current && path) {
+        const ndsBank = new NDSInstrumentBank(
+          ndsBufferRef.current,
+          ndsName ?? "",
+          path,
+        );
+        setSelectedNdsSdat(path);
+        setNdsBank((prev) => {
+          prev?.dispose();
+          return ndsBank;
+        });
+      }
+    },
+    [ndsName],
+  );
 
   const loadNDS = useCallback(async (file: File) => {
     setLoadingAsset("NDS ROM");
@@ -148,7 +155,11 @@ export const InstrumentProvider: FC<{ children: ReactNode }> = ({
       setNdsSdats(sdats);
       setSelectedNdsSdat(sdats[0]);
       // Register first SDAT immediately
-      const ndsBank = new NDSInstrumentBank(ndsBufferRef.current, file.name, sdats[0]);
+      const ndsBank = new NDSInstrumentBank(
+        ndsBufferRef.current,
+        file.name,
+        sdats[0],
+      );
       setNdsName(file.name);
       setNdsBank((prev) => {
         prev?.dispose();
@@ -177,12 +188,26 @@ export const InstrumentProvider: FC<{ children: ReactNode }> = ({
         return res.arrayBuffer();
       }
     }
-    fetch("/GeneralUser-GS.sf3.gz").then(async (res) => {
-      generalUserGS.current = await decompressIfNecessary(res);
+    async function fetchSoundfont(path: string) {
+      const cache = await window.caches.open("smile-mml-soundfonts");
+      let res = await cache.match(path);
+      if (!res) {
+        res = await fetch(path);
+        if (res.ok) {
+          cache.put(path, res.clone());
+        }
+      }
+      if (res.ok) {
+        return await decompressIfNecessary(res);
+      }
+      throw new Error(`failed to fetch ${path}: ${res.status}`);
+    }
+    fetchSoundfont("/GeneralUser-GS.sf3.gz").then((buf) => {
+      generalUserGS.current = buf;
       loadSF2("GeneralUser GS");
     });
-    fetch("/FluidR3_GM.sf3.gz").then(async (res) => {
-      fluidR3GM.current = await decompressIfNecessary(res);
+    fetchSoundfont("/FluidR3_GM.sf3.gz").then((buf) => {
+      fluidR3GM.current = buf;
     });
   }, [loadSF2]);
 
@@ -340,48 +365,48 @@ export function InstrumentSelect() {
             <div key="nds" className="flex flex-wrap items-center gap-2 mb-2">
               <span className="">NDS ROM (.nds / .sdat) を選択</span>
               <div className={clsx(ndsName && "join")}>
-              <label
-                htmlFor="NDSInstrumentInput"
-                className={clsx(
+                <label
+                  htmlFor="NDSInstrumentInput"
+                  className={clsx(
                     "btn btn-accent btn-sm",
                     ndsName && "join-item",
                   )}
-              >
-                ファイルを読み込む...
-              </label>
-              <input
-                type="file"
-                id="NDSInstrumentInput"
-                className="hidden"
-                accept=".nds,.sdat"
-                disabled={loadingAsset !== null}
-                onChange={(e) => {
-                  if (e.target.files?.[0]) {
-                    loadNDS(e.target.files[0]);
-                  }
-                }}
-              />
-              {ndsName && (
+                >
+                  ファイルを読み込む...
+                </label>
+                <input
+                  type="file"
+                  id="NDSInstrumentInput"
+                  className="hidden"
+                  accept=".nds,.sdat"
+                  disabled={loadingAsset !== null}
+                  onChange={(e) => {
+                    if (e.target.files?.[0]) {
+                      loadNDS(e.target.files[0]);
+                    }
+                  }}
+                />
+                {ndsName && (
                   <input
                     className="input input-sm join-item"
                     value={ndsName}
                     readOnly
                   />
                 )}
-              {ndsSdats.length >= 1 && (
-                <select
-                  className="select select-sm"
-                  value={selectedNdsSdat}
-                  onChange={(e) => selectSdat(e.target.value)}
-                >
-                  {ndsSdats.map((path) => (
-                    <option key={path} value={path}>
-                      {path}
-                    </option>
-                  ))}
-                </select>
-              )}
-            </div>
+                {ndsSdats.length >= 1 && (
+                  <select
+                    className="select select-sm"
+                    value={selectedNdsSdat}
+                    onChange={(e) => selectSdat(e.target.value)}
+                  >
+                    {ndsSdats.map((path) => (
+                      <option key={path} value={path}>
+                        {path}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
             </div>
             <p className="mb-2 text-paragraph text-xs">
               ファイルをドラッグ&ドロップで読み込むこともできます。
