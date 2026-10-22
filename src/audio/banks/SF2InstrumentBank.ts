@@ -296,10 +296,11 @@ export class SF2InstrumentBank implements InstrumentBank {
     const fineTune =
       (header.pitchCorrection || 0) + gen.get("fineTune") + coarseTune;
 
-    // Pan: SF2 is -500 (left) to +500 (right), あるいは @marmooo/soundfont では -1000~1000 の場合もあるため base-player.ts に合わせる
-    const panVal = gen.get("pan");
-    const defaultPan =
-      panVal !== undefined ? Math.max(-1, Math.min(1, panVal / 1000)) : 0;
+    // const panVal = gen.get("pan");
+    // const defaultPan =
+    //   panVal !== undefined ? Math.max(-1, Math.min(1, panVal / 1000)) : 0;
+    // 特にFluid3GMでは無駄に左右にpanが振られているが、正直いらない
+    const defaultPan = 0;
 
     // EMU8k/10k / FluidSynth compatibility for initialAttenuation.
     //
