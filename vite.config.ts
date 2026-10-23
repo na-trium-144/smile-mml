@@ -44,6 +44,32 @@ export default defineConfig({
             purpose: "any",
           },
         ],
+        file_handlers: [
+          {
+            action: "/",
+            accept: {
+              "text/plain": [
+                ".*",
+                ".txt",
+                ".prg",
+                ".mml",
+                ".bgm",
+                ".nnm",
+                ".tgm",
+                ".krc",
+                ".nsp",
+                ".tgf",
+                ".sgm",
+                ".tjas",
+              ],
+            },
+            // @ts-ignore
+            launch_type: "single-client",
+          },
+        ],
+        launch_handler: {
+          client_mode: "focus-existing",
+        },
       },
     }),
   ],

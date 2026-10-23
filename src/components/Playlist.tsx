@@ -4,6 +4,7 @@ import {
   type ReactNode,
   useState,
   useCallback,
+  useEffect,
 } from "react";
 import { extractMacro } from "../parser";
 import sample1 from "../samples/sample1.mml?raw";
@@ -92,19 +93,17 @@ export function PlaylistProvider({ children }: { children: ReactNode }) {
   const reParseAsPrg = useCallback(() => {
     const parsedAsPrg = extractSmileBasicMML(currentFile.content);
     if (!currentFile.isSample && parsedAsPrg.length >= 1) {
-      setFiles((prev) =>
-        [
-          ...prev.slice(0, currentIndex),
-          ...parsedAsPrg.map(({ label, content }) => ({
-            name:
-              extractMacro(content, "TITLE", false) || label || currentFile.name,
-            content: content,
-          })),
-          ...prev.slice(currentIndex + 1),
-        ]
-      );
+      setFiles((prev) => [
+        ...prev.slice(0, currentIndex),
+        ...parsedAsPrg.map(({ label, content }) => ({
+          name:
+            extractMacro(content, "TITLE", false) || label || currentFile.name,
+          content: content,
+        })),
+        ...prev.slice(currentIndex + 1),
+      ]);
     }
-  }, [currentIndex, currentFile])
+  }, [currentIndex, currentFile]);
 
   const updateContent = useCallback(
     (content: string) => {
@@ -137,6 +136,19 @@ export function PlaylistProvider({ children }: { children: ReactNode }) {
     },
     [currentIndex, files, currentFile],
   );
+
+  useEffect(() => {
+    // PWAのfile_handlersで開こうとしたファイル
+    if ("launchQueue" in window) {
+      (window.launchQueue as any).setConsumer(async (launchParams: any) => {
+        if (launchParams.files && launchParams.files.length) {
+          for (const file of launchParams.files) {
+            loadFile(await file.getFile());
+          }
+        }
+      });
+    }
+  }, [loadFile]);
 
   return (
     <PlaylistContext.Provider
