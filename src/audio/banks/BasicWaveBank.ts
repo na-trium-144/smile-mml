@@ -56,6 +56,8 @@ export class BasicWaveBank implements InstrumentBank {
     attenuation?: number;
     envelope?: ADSRParams;
   }[] {
+    // 音量は正確ではない
+    // (TODO: 実機とsmilemmlの出力する波形の振幅を比較して調整する?)
     return [
       [144, 145, 146, 147, 148, 149, 150].map(
         (p) =>
@@ -64,7 +66,7 @@ export class BasicWaveBank implements InstrumentBank {
             type: "psg",
             duty: PSG_DUTY_CYCLES[p - 144],
             name: `PSG ${PSG_DUTY_CYCLES[p - 144] * 100}%`,
-            attenuation: 0.5,
+            attenuation: 0.4,
           }) as const,
       ),
       [257, 258, 259, 263].map(
@@ -74,7 +76,7 @@ export class BasicWaveBank implements InstrumentBank {
             type: "psg",
             duty: 0.5,
             name: `PSG 50% with Envelope`,
-            attenuation: 0.3,
+            attenuation: 0.2,
             envelope: {
               257: undefined,
               258: convertSmileBASICEnvelope({ a: 95, d: 0, s: 127, r: 124 }),
@@ -90,7 +92,7 @@ export class BasicWaveBank implements InstrumentBank {
             type: "noise",
             name: "White Noise",
             ignoreKey: true,
-            attenuation: 0.3,
+            attenuation: 0.2,
           }) as const,
       ),
       // mkII仕様のノイズを@159に登録しておく。
@@ -111,7 +113,7 @@ export class BasicWaveBank implements InstrumentBank {
             program: p,
             type: "sawtooth",
             name: "Sawtooth Wave",
-            attenuation: 0.3,
+            attenuation: 0.2,
           }) as const,
       ),
       [344].map(
@@ -120,7 +122,7 @@ export class BasicWaveBank implements InstrumentBank {
             program: p,
             type: "sine",
             name: "Sine Wave",
-            attenuation: 0.5,
+            attenuation: 0.4,
             keyShift: 12,
           }) as const,
       ),

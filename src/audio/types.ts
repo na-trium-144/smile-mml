@@ -4,6 +4,7 @@
 
 import type { EnvelopeParams, ModulationParams } from '../parser/types.js';
 import type { EnvelopeHelper } from './synth/EnvelopeHelper.js';
+import type { ModulationHelper } from './synth/ModulationHelper.js';
 
 /**
  * Standard ADSR Envelope in physical units (seconds and ratio)
@@ -101,6 +102,7 @@ export interface PostProcessedNote {
   segments: NoteSegment[]; // pitch & parameter trajectory segments
   synth: {
     envelope?: EnvelopeHelper; // final envelope, set in SynthEngine.playNote()
+    modulation?: ModulationHelper; // final modulation, set in SynthEngine.playNote() or MMLScheduler
     durationSec?: number; // set in MMLScheduler.scheduleNote()
     gateDurationSec?: number; // set in MMLScheduler.scheduleNote()
     voiceType?: "sf2" | "basicWave" | "nds"; // set in MMLScheduler.scheduleNote()

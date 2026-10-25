@@ -209,7 +209,7 @@ export class NDSInstrumentBank implements InstrumentBank {
         imag: harmonics.imag,
         defaultEnvelope: this.convertNdsEnvelope(direct.noteInfo),
         defaultPan: (direct.noteInfo.pan - 64) / 64,
-        attenuation: 0.7,
+        attenuation: 0.35,
       };
       return voice;
     }
@@ -223,7 +223,7 @@ export class NDSInstrumentBank implements InstrumentBank {
         sampleRate: 48000,
         defaultEnvelope: this.convertNdsEnvelope(direct.noteInfo),
         defaultPan: (direct.noteInfo.pan - 64) / 64,
-        attenuation: 1,
+        attenuation: 0.5,
         loop: true,
         loopStart: 0,
         loopEnd: BasicWaveBank.NOISE_PCM.length,
@@ -276,7 +276,7 @@ export class NDSInstrumentBank implements InstrumentBank {
       loopEnd: Math.min(pcm.length, loopStart + loopLength),
       defaultEnvelope: this.convertNdsEnvelope(noteInfo),
       defaultPan: (noteInfo.pan - 64) / 64,
-      attenuation: 1.0,
+      attenuation: 0.5,
     };
   }
 

@@ -73,6 +73,16 @@ export interface ActiveModulationConfig {
 }
 
 /**
+ * smilebasic volume (0-127) to gain (0-1)
+ * 
+ * パラメーターは実測の波形を目視
+ * 対数ではなさそう...?
+ */
+export function sbVolumeToGain(volume: number){
+  return Math.pow(volume / 127, 1.73);
+}
+
+/**
  * Resolve active modulation from MML modulation parameters
  *
  * SmileBASIC3での実測値をもとにしている。
@@ -80,8 +90,8 @@ export interface ActiveModulationConfig {
  *
  * - Delay: Delay * 0.01953125s (128th note at BPM 96)
  * - Speed: Speed / 2.5 Hz (period is (Speed)th note at BPM 96; 0 means no effect)
- * - @ML AutoPan: +/- (Depth * Range / 2) on 0-127 pan scale -> normalized (+/- 0 to 1)
- * - @MA Tremolo: -(Depth * Range / 2) gain reduction
+ * - @ML AutoPan: +/- (Depth * Range / 2) on 0-127 pan scale -> normalized (+/- -1 to 1)
+ * - @MA Tremolo: depth127 ≒ -3.5dB?
  * - @MP Vibrato: +/- (Depth * Range / 128) semitones
  */
 export function resolveModulationConfig(
@@ -114,13 +124,10 @@ export function resolveModulationConfig(
 
   let depth = 0;
   if (target.type === "autoPan") {
-    // Amplitude +/- (Depth * Range / 2) on 0-127 scale -> 0.0 to 1.0 pan
-    depth = Math.min(1.0, (target.depth * target.range) / (2 * 64) / 2);
+    depth = Math.min(1.0, (target.depth * target.range) / 127);
   } else if (target.type === "tremolo") {
-    // Gain reduction ratio (0.0 to 1.0)
-    depth = Math.min(1.0, (target.depth * target.range) / (2 * 127));
+    depth = 1 - Math.pow(10, -(target.depth * target.range) / 127 * 3.5 / 20);
   } else if (target.type === "vibrato") {
-    // Semitones: (Depth * Range / 128)
     depth = (target.depth * target.range) / 128;
   }
 

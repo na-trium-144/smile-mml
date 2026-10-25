@@ -226,7 +226,26 @@ export function MmlSpec() {
             <span><span className="text-sb3-label">64,1,16,16</span> から微調整するのがおすすめです</span>
           </div>
         </li>
-        {/*- (非公式情報) 多少誤差があるかもですが、まず音の鳴り始めからBPM96の128分音符 (Delay) 個分相当の時間は変化がなく、その後BPM96の (Speed) 分音符相当の長さを1周期としたエフェクトがかかります。Speed=0のときはエフェクトはかかりません。@MLでは現在のパンポットから `±Depth*Range/2` の範囲で変化します。@MAでは現在の `V*@V/127` から `(V*@V/127)-(Depth*Range/2)` の範囲で音の大きさが変化します。@MPでは半音 `±Depth*Range/128` 個分の範囲で変化します。いずれもDepthとRangeの違いはわかりませんでした。 http://petitverse.hosiken.jp/community/petitcom/diary/?read=4221&ukey=0*/}
+        {/*- (非公式情報) 多少誤差があるかもですが、
+        まず音の鳴り始めからBPM96の128分音符 (Delay) 個分相当の時間は変化がなく、その後BPM96の (Speed) 分音符相当の長さを1周期としたエフェクトがかかります。
+        Speed=0のときはエフェクトはかかりません。
+        @MLでは現在のパンポットから `±Depth*Range/2` の範囲で変化します。
+        @MAでは現在の `V*@V/127` から `(V*@V/127)-(Depth*Range/2)` の範囲で音の大きさが変化します。
+        @MPでは半音 `±Depth*Range/128` 個分の範囲で変化します。
+        いずれもDepthとRangeの違いはわかりませんでした。 http://petitverse.hosiken.jp/community/petitcom/diary/?read=4221&ukey=0*/}
+        {/*追加検証の結果、そもそも音量・ベロシティが線形でなく。tremoloの範囲も線形でない。
+        音量127で、振幅が0.5
+        音量127のtremolo depth=127で、振幅約0.3〜0.65の範囲を変化
+        音量127のtremolo depth=64で、振幅約0.4〜0.6の範囲を変化
+        音量127のtremolo depth=254で、振幅約0.2〜0.75の範囲を変化 (0.75がクリップされる上限っぽい)
+        音量127のtremolo depth=508で、振幅約0.05〜0.75の範囲を変化
+        音量64で、振幅が0.15
+        音量64のtremolo depth=127で、振幅約0.1〜0.3の範囲を変化
+        音量64のtremolo depth=64で、振幅約0.1〜0.25の範囲を変化
+        音量64のtremolo depth=254で、振幅約0.05〜0.35の範囲を変化
+        音量64のtremolo depth=508で、振幅ほぼ0〜0.35の範囲を変化 (0.35のあたりでクリップされるっぽい)
+        conversion.ts に実装
+        */}
         <li>
           モジュレーション終了 <span className="text-sb3-label">@MOF</span>
         </li>

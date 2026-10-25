@@ -84,6 +84,13 @@ export const NoteVisualizer: FC<NoteVisualizerProps> = ({
       ),
     [],
   );
+  const colorLabel = useMemo(
+    () =>
+      getComputedStyle(document.documentElement).getPropertyValue(
+        "--color-sb3-label",
+      ),
+    [],
+  );
 
   const soundingNotes = useRef<(PostProcessedNote | undefined)[]>([]);
   const [currentPrograms, setCurrentPrograms] = useState<
@@ -192,6 +199,10 @@ export const NoteVisualizer: FC<NoteVisualizerProps> = ({
         if (isSounding) {
           // Draw green background for the note's sounding range
           const bgX = halfWidth + (note.tick - currentTick) * PIXELS_PER_TICK;
+
+          const tickPerSecond = note.duration / note.synth.durationSec!;
+          const pixelPerSecond = PIXELS_PER_TICK * tickPerSecond;
+
           // const bgW = note.duration * PIXELS_PER_TICK;
           ctx.save();
           ctx.fillStyle = colorPrimary;
@@ -201,11 +212,27 @@ export const NoteVisualizer: FC<NoteVisualizerProps> = ({
           ctx.translate(bgX, yBase);
           note.synth.envelope?.drawADSR(
             ctx,
-            (PIXELS_PER_TICK * note.duration) / note.synth.durationSec!,
+            pixelPerSecond,
             CHANNEL_HEIGHT - 1,
           );
           ctx.restore();
           soundingNotes.current[ci] = note;
+
+          // modulation
+          if(note.synth.modulation?.enabled && note.synth.envelope){
+            ctx.fillStyle = colorLabel;
+            for(let sec = note.synth.modulation.delay; sec < (note.synth.gateDurationSec ?? 0) + note.synth.envelope.releaseTime * 0.25; sec += note.synth.modulation.period){
+            ctx.beginPath();
+            ctx.roundRect(
+              bgX + sec * pixelPerSecond,
+              yBase + CHANNEL_HEIGHT - 3,
+              note.synth.modulation.period / 2 * pixelPerSecond,
+              2,
+              2,
+            );
+            ctx.fill();
+            }
+          }
 
           // 次のノートの開始タイミングで表示をカット
           const nextNote = chNotes.at(ni + 1);
@@ -221,6 +248,7 @@ export const NoteVisualizer: FC<NoteVisualizerProps> = ({
             );
             ctx.restore();
           }
+
 
           break;
         }
@@ -291,6 +319,7 @@ export const NoteVisualizer: FC<NoteVisualizerProps> = ({
 
         const yBase = ci * CHANNEL_HEIGHT;
         const yBaseline = yBase + CHANNEL_HEIGHT * 0.75;
+        const tickPerSecond = p.duration / (p.synth.durationSec ?? 1);
 
         const vel = s.velocity * s.volume;
         const pan = s.pan;
@@ -327,46 +356,69 @@ export const NoteVisualizer: FC<NoteVisualizerProps> = ({
           detune = currentNoteNumber64 - noteNumber * 64;
         }
 
+        const moduletionValue = p.synth.modulation?.getValue((currentTick - p.tick) / tickPerSecond) ?? 0;
+        const beforeRelease = (currentTick - p.tick) / tickPerSecond < (p.synth.gateDurationSec ?? 0) + (p.synth.envelope?.releaseTime ?? 0);
+
+        let velDisplay = vel;
         ctx2.fillStyle = colorPrimary;
+        if(p.synth.modulation?.enabled && p.synth.modulation.type === "tremolo" && moduletionValue !== 0 && beforeRelease){
+          ctx2.fillStyle = colorLabel;
+          // tremoloのdepthもvolumeも線形でないので単位があっていないが、変換面倒なので一旦これで
+          velDisplay += moduletionValue * 127 * 127;
+        }
         ctx2.beginPath();
         ctx2.roundRect(
           0,
           yBase + CHANNEL_HEIGHT - 2,
-          (VEL_WIDTH * vel) / 127 / 127,
+          (VEL_WIDTH * velDisplay) / 127 / 127,
           2,
           2,
         );
         ctx2.fill();
 
+        let panDisplay = pan;
+        ctx2.fillStyle = colorPrimary;
+        if(p.synth.modulation?.enabled && p.synth.modulation.type === "autoPan" && moduletionValue !== 0 && beforeRelease){
+          ctx2.fillStyle = colorLabel;
+          panDisplay += moduletionValue * 64;
+        }
         ctx2.beginPath();
-        if (pan > 64) {
+        if (panDisplay > 64) {
           ctx2.roundRect(
             VEL_WIDTH + PAN_WIDTH / 2,
             yBase + CHANNEL_HEIGHT - 2,
-            ((PAN_WIDTH / 2) * (pan - 64)) / 64,
+            ((PAN_WIDTH / 2) * (panDisplay - 64)) / 64,
             2,
             2,
           );
         } else {
           ctx2.roundRect(
-            VEL_WIDTH + PAN_WIDTH / 2 - ((PAN_WIDTH / 2) * (64 - pan)) / 64,
+            VEL_WIDTH + PAN_WIDTH / 2 - ((PAN_WIDTH / 2) * (64 - panDisplay)) / 64,
             yBase + CHANNEL_HEIGHT - 2,
-            ((PAN_WIDTH / 2) * (64 - pan)) / 64,
+            ((PAN_WIDTH / 2) * (64 - panDisplay)) / 64,
             2,
             2,
           );
         }
         ctx2.fill();
 
+        let detuneDisplay = detune;
+        ctx2.fillStyle = colorPrimary;
+        if(p.synth.modulation?.enabled && p.synth.modulation.type === "vibrato" && moduletionValue !== 0 && beforeRelease){
+          ctx2.fillStyle = colorLabel;
+          detuneDisplay += moduletionValue * 64;
+        }
         if (detuneChangedByPortamento) {
           ctx2.fillStyle = "#ffffff";
         }
         ctx2.beginPath();
-        if (detune > 0) {
+        if (detuneDisplay > 0) {
           ctx2.roundRect(
             VEL_WIDTH + PAN_WIDTH + (NOTE_WIDTH + DETUNE_WIDTH) / 2,
             yBase + CHANNEL_HEIGHT - 2,
-            (((NOTE_WIDTH + DETUNE_WIDTH) / 2) * detune) / 128,
+            // 表示スケールをvel,panとそろえる
+            // このスケールでは全体が表示できないが、D+127のような大きなデチューンは使用頻度が低いのでまあ良いでしょう
+            ((PAN_WIDTH / 2) * detuneDisplay) / 64,
             2,
             2,
           );
@@ -375,9 +427,9 @@ export const NoteVisualizer: FC<NoteVisualizerProps> = ({
             VEL_WIDTH +
               PAN_WIDTH +
               (NOTE_WIDTH + DETUNE_WIDTH) / 2 +
-              (((NOTE_WIDTH + DETUNE_WIDTH) / 2) * detune) / 128,
+              ((PAN_WIDTH / 2) * detuneDisplay) / 64,
             yBase + CHANNEL_HEIGHT - 2,
-            -(((NOTE_WIDTH + DETUNE_WIDTH) / 2) * detune) / 128,
+            -((PAN_WIDTH / 2) * detuneDisplay) / 64,
             2,
             2,
           );
@@ -421,6 +473,31 @@ export const NoteVisualizer: FC<NoteVisualizerProps> = ({
             yBaseline,
           );
         }
+
+        ctx2.fillStyle = colorLabel;
+        ctx2.font = `10px "M+ 1p", "M+ 1c", "M PLUS 1p"`;
+          ctx2.textAlign = "left";
+        if(p.synth.modulation?.enabled && p.synth.modulation.type === "tremolo"){
+          ctx2.fillText(
+            "A",
+            VEL_WIDTH * 0.9,
+            yBase + CHANNEL_HEIGHT * 0.6,
+          );
+        }
+        if(p.synth.modulation?.enabled && p.synth.modulation.type === "autoPan"){
+          ctx2.fillText(
+            "L",
+            VEL_WIDTH + PAN_WIDTH * 0.9,
+            yBase + CHANNEL_HEIGHT * 0.6,
+          );
+        }
+        if(p.synth.modulation?.enabled && p.synth.modulation.type === "vibrato"){
+          ctx2.fillText(
+            "P",
+            VEL_WIDTH + PAN_WIDTH + NOTE_WIDTH,
+            yBase + CHANNEL_HEIGHT * 0.6,
+          );
+        }
       }
     }
 
@@ -456,6 +533,7 @@ export const NoteVisualizer: FC<NoteVisualizerProps> = ({
     colorBase100,
     colorPrimary,
     colorStatement,
+    colorLabel,
     getNotesForChannel,
   ]);
 
