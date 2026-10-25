@@ -17,8 +17,6 @@ export class ModulationHelper {
   public readonly frequencyHz: number;
   /** LFO周期（秒） = 1 / frequencyHz */
   public readonly period: number;
-  /** ディレイ後の目標振幅までのランプアップ時間（秒、WebAudioでの linearRamp 0.05秒に相当） */
-  public readonly rampTime: number = 0.05;
 
   /**
    * 振幅（depth の別名）
@@ -76,46 +74,10 @@ export class ModulationHelper {
       return 0;
     }
 
-    const activeElapsed = elapsed - this.delay;
-    const gainRatio =
-      this.rampTime > 0 ? Math.min(1, activeElapsed / this.rampTime) : 1;
-
     // WebAudio の OscillatorNode (sine) は startTime から発振するため位相は 2 * PI * frequencyHz * elapsed
     const osc = Math.sin(2 * Math.PI * this.frequencyHz * elapsed);
-    const value = osc * (this.depth * gainRatio);
+    const value = osc * this.depth;
     return value === 0 ? 0 : value;
-  }
-
-  /**
-   * getValue のエイリアス
-   */
-  public getValueAtTime(time: number, startTime: number = 0): number {
-    return this.getValue(time, startTime);
-  }
-
-  /**
-   * 任意の時刻におけるモジュレーションの振幅エンベロープ（0 〜 depth）を取得する。
-   */
-  public getAmplitudeAtTime(time: number, startTime: number = 0): number {
-    if (!this.enabled || this.depth === 0) {
-      return 0;
-    }
-    const elapsed = time - startTime;
-    if (elapsed < this.delay) {
-      return 0;
-    }
-    const activeElapsed = elapsed - this.delay;
-    const gainRatio =
-      this.rampTime > 0 ? Math.min(1, activeElapsed / this.rampTime) : 1;
-    return this.depth * gainRatio;
-  }
-
-  /**
-   * 任意の時刻における正規化されたLFO波形値 (-1.0 〜 +1.0) を取得する。
-   */
-  public getNormalizedValue(time: number, startTime: number = 0): number {
-    if (this.depth === 0) return 0;
-    return this.getValue(time, startTime) / this.depth;
   }
 
   /**
@@ -137,67 +99,27 @@ export class ModulationHelper {
     const lfoGain = ctx.createGain();
     const lfoActiveTime = startTime + this.delay;
 
-    // Initially silent during delay
-    lfoGain.gain.setValueAtTime(0, startTime);
-    if (this.delay > 0) {
-      lfoGain.gain.setValueAtTime(0, lfoActiveTime);
-    }
+    lfo.start(lfoActiveTime);
 
     if (this.type === 'tremolo') {
       // Modulates gain downwards
-      lfoGain.gain.linearRampToValueAtTime(this.depth, lfoActiveTime + this.rampTime);
+      lfoGain.gain.setValueAtTime(this.depth, startTime);
       lfo.connect(lfoGain);
       lfoGain.connect(gainParam);
     } else if (this.type === 'autoPan') {
       // Modulates stereo pan (-1.0 to +1.0)
-      lfoGain.gain.linearRampToValueAtTime(this.depth, lfoActiveTime + this.rampTime);
+      lfoGain.gain.setValueAtTime(this.depth, startTime);
       lfo.connect(lfoGain);
       lfoGain.connect(panParam);
     } else if (this.type === 'vibrato') {
       // Modulates pitch (semitones)
-      if (sourceNode instanceof OscillatorNode) {
-        // Oscillator frequency in Hz: depth is in semitones
-        // Delta Hz approx = f * (2^(depth/12) - 1)
-        const currentFreq = sourceNode.frequency.value;
-        const deltaHz = currentFreq * (Math.pow(2, this.depth / 12) - 1);
-        lfoGain.gain.linearRampToValueAtTime(deltaHz, lfoActiveTime + this.rampTime);
-        lfo.connect(lfoGain);
-        lfoGain.connect(sourceNode.frequency);
-      } else if (sourceNode instanceof AudioBufferSourceNode) {
-        // PlaybackRate: depth in semitones -> delta rate = (2^(depth/12) - 1)
-        const deltaRate = Math.pow(2, this.depth / 12) - 1;
-        lfoGain.gain.linearRampToValueAtTime(deltaRate, lfoActiveTime + this.rampTime);
-        lfo.connect(lfoGain);
-        lfoGain.connect(sourceNode.playbackRate);
-      }
+      lfoGain.gain.setValueAtTime(this.depth * 100, startTime);
+      lfo.connect(lfoGain);
+      lfoGain.connect((sourceNode as OscillatorNode | AudioBufferSourceNode).detune);
     }
 
-    lfo.start(startTime);
     lfo.stop(stopTime);
 
     return lfo;
-  }
-
-  /**
-   * Static helper for backward compatibility
-   */
-  public static attachModulation(
-    ctx: AudioContext,
-    sourceNode: AudioScheduledSourceNode,
-    gainParam: AudioParam,
-    panParam: AudioParam,
-    mod: ModulationParams,
-    startTime: number,
-    stopTime: number
-  ): OscillatorNode | null {
-    const helper = new ModulationHelper(mod);
-    return helper.attachModulation(
-      ctx,
-      sourceNode,
-      gainParam,
-      panParam,
-      startTime,
-      stopTime
-    );
   }
 }
