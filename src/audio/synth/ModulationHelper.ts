@@ -87,7 +87,6 @@ export class ModulationHelper {
     lfo.start(lfoActiveTime);
 
     if (this.type === 'tremolo') {
-      // Modulates gain downwards
       lfoGain.gain.setValueAtTime(this.depth, startTime);
       lfo.connect(lfoGain);
       lfoGain.connect(gainParam);

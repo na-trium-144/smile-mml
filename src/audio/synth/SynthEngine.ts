@@ -9,6 +9,7 @@ import {
   midiNoteToFrequency,
   convertSmileBASICEnvelope,
   sbPanToStereoPanner,
+  sbVolumeToGain,
 } from "../utils/conversion.js";
 import { EnvelopeHelper } from "./EnvelopeHelper.js";
 import { ModulationHelper } from "./ModulationHelper.js";
@@ -19,6 +20,7 @@ interface ActiveVoiceRecord {
   source: AudioScheduledSourceNode;
   envelopeGainNode: GainNode;
   velocityGainNode: GainNode;
+  tremoloGainNode: GainNode;
   panNode: StereoPannerNode;
   lfo?: OscillatorNode;
   stopTime: number;
@@ -74,7 +76,7 @@ export class SynthEngine {
    */
   public setChannelVolume(channel: number, volume: number, time?: number): void {
     const strip = this.getOrCreateChannelStrip(channel);
-    const targetGain = Math.max(0, Math.min(1.0, volume / 127));
+    const targetGain = sbVolumeToGain(volume);
     const targetTime = time ?? this.ctx.currentTime;
     strip.volumeGain.gain.setValueAtTime(targetGain, targetTime);
   }
@@ -135,12 +137,14 @@ export class SynthEngine {
 
     const envelopeGain = this.ctx.createGain();
     const velocityGain = this.ctx.createGain();
+    const tremoloGain = this.ctx.createGain();
     const panNode = this.ctx.createStereoPanner();
 
     const channelStrip = this.getOrCreateChannelStrip(note.channel);
 
     // Initial velocity gain and pan from initial note properties
-    velocityGain.gain.setValueAtTime((note.velocity / 127) * effectiveAtten, startTime);
+    velocityGain.gain.setValueAtTime(sbVolumeToGain(note.velocity) * effectiveAtten, startTime);
+    tremoloGain.gain.setValueAtTime(1, startTime);
     panNode.pan.setValueAtTime(
       Math.max(-1.0, Math.min(1.0, basePan + sbPanToStereoPanner(note.pan))),
       startTime
@@ -148,7 +152,7 @@ export class SynthEngine {
 
     // Connect node chain:
     // Source -> (Filter) -> EnvelopeGain -> VelocityGain -> PanNode -> ChannelVolumeGain -> MasterGain
-    envelopeGain.connect(velocityGain).connect(panNode).connect(channelStrip.volumeGain);
+    envelopeGain.connect(tremoloGain).connect(velocityGain).connect(panNode).connect(channelStrip.volumeGain);
 
     // 3. Create sound source node based on VoiceData kind
     let sourceNode: AudioScheduledSourceNode;
@@ -185,7 +189,7 @@ export class SynthEngine {
 
         // Schedule mid-compound parameter changes (V, P)
         if (i > 0) {
-          velocityGain.gain.setValueAtTime((seg.velocity / 127) * effectiveAtten, segStartTime);
+          velocityGain.gain.setValueAtTime(sbVolumeToGain(seg.velocity) * effectiveAtten, segStartTime);
           panNode.pan.setValueAtTime(Math.max(-1.0, Math.min(1.0, basePan + sbPanToStereoPanner(seg.pan))), segStartTime);
         }
       }
@@ -239,7 +243,7 @@ export class SynthEngine {
 
         // Schedule mid-compound parameter changes (V, P)
         if (i > 0) {
-          velocityGain.gain.setValueAtTime((seg.velocity / 127) * effectiveAtten, segStartTime);
+          velocityGain.gain.setValueAtTime(sbVolumeToGain(seg.velocity) * effectiveAtten, segStartTime);
           panNode.pan.setValueAtTime(Math.max(-1.0, Math.min(1.0, basePan + sbPanToStereoPanner(seg.pan))), segStartTime);
         }
       }
@@ -272,7 +276,7 @@ export class SynthEngine {
         const attached = modHelper.attachModulation(
           this.ctx,
           sourceNode,
-          velocityGain.gain,
+          tremoloGain.gain,
           panNode.pan,
           startTime,
           stopTime,
@@ -292,6 +296,7 @@ export class SynthEngine {
       source: sourceNode,
       envelopeGainNode: envelopeGain,
       velocityGainNode: velocityGain,
+      tremoloGainNode: tremoloGain,
       panNode,
       lfo: lfoNode,
       stopTime,
@@ -315,6 +320,8 @@ export class SynthEngine {
         voice.envelopeGainNode.gain.setValueAtTime(0, now);
         voice.velocityGainNode.gain.cancelScheduledValues(now);
         voice.velocityGainNode.gain.setValueAtTime(0, now);
+        voice.tremoloGainNode.gain.cancelScheduledValues(now);
+        voice.tremoloGainNode.gain.setValueAtTime(0, now);
         voice.source.stop(now);
         voice.lfo?.stop(now);
       } catch {
