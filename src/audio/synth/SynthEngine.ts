@@ -266,16 +266,19 @@ export class SynthEngine {
     // TODO: SmileBASIC handles mid-note modulation changes with complex behavior. Currently fixed to the first note's modulation.
     let lfoNode: OscillatorNode | undefined;
     if (note.modulation.enabled) {
-      const attached = ModulationHelper.attachModulation(
-        this.ctx,
-        sourceNode,
-        velocityGain.gain,
-        panNode.pan,
-        note.modulation,
-        startTime,
-        stopTime,
-      );
-      if (attached) lfoNode = attached;
+      const modHelper = note.synth.modulation ?? new ModulationHelper(note.modulation);
+      if (modHelper.enabled) {
+        note.synth.modulation = modHelper;
+        const attached = modHelper.attachModulation(
+          this.ctx,
+          sourceNode,
+          velocityGain.gain,
+          panNode.pan,
+          startTime,
+          stopTime,
+        );
+        if (attached) lfoNode = attached;
+      }
     }
 
     // 7. Start & Stop scheduling

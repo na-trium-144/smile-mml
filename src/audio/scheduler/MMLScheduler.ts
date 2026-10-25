@@ -14,6 +14,7 @@ import {
   NOTE_NAMES,
 } from "../../parser/vmmlParser.js";
 import { sbDetuneToCents } from "../utils/conversion.js";
+import { ModulationHelper } from "../synth/ModulationHelper.js";
 import { TempoMap } from "./TempoMap.js";
 import type { InstrumentBank } from "../banks/InstrumentBank.js";
 
@@ -476,7 +477,14 @@ export class MMLScheduler {
       envelope: first.envelope,
       modulation: first.modulation,
       segments: compound.segments,
-      synth: {},
+      synth: {
+        ...(first.modulation.enabled
+          ? (() => {
+              const m = new ModulationHelper(first.modulation);
+              return m.enabled ? { modulation: m } : {};
+            })()
+          : {}),
+      },
     };
 
     const noteEnd = postProcessedNote.tick + postProcessedNote.duration;
@@ -522,7 +530,14 @@ export class MMLScheduler {
               octave: n.baseOctave,
         },
       ],
-      synth: {},
+      synth: {
+        ...(n.modulation.enabled
+          ? (() => {
+              const m = new ModulationHelper(n.modulation);
+              return m.enabled ? { modulation: m } : {};
+            })()
+          : {}),
+      },
     };
 
     const noteEnd = postProcessedNote.tick + postProcessedNote.duration;
@@ -845,7 +860,18 @@ export class MMLScheduler {
     note: PostProcessedNote,
     audioTime: number,
   ): Promise<void> {
-    note.synth = {};
+    const modulation =
+      note.synth.modulation ??
+      (note.modulation.enabled
+        ? (() => {
+            const m = new ModulationHelper(note.modulation);
+            return m.enabled ? m : undefined;
+          })()
+        : undefined);
+
+    note.synth = {
+      ...(modulation ? { modulation } : {}),
+    };
 
     note.synth.durationSec = this.tempoMap.durationTicksToSeconds(
       note.tick,
