@@ -18,20 +18,6 @@ export class ModulationHelper {
   /** LFO周期（秒） = 1 / frequencyHz */
   public readonly period: number;
 
-  /**
-   * 振幅（depth の別名）
-   */
-  public get amplitude(): number {
-    return this.depth;
-  }
-
-  /**
-   * 開始遅延時間（秒、delay の別名）
-   */
-  public get delaySeconds(): number {
-    return this.delay;
-  }
-
   constructor(mod?: ModulationParams | ActiveModulationConfig | null) {
     let config: ActiveModulationConfig | null = null;
     if (mod) {
@@ -74,8 +60,7 @@ export class ModulationHelper {
       return 0;
     }
 
-    // WebAudio の OscillatorNode (sine) は startTime から発振するため位相は 2 * PI * frequencyHz * elapsed
-    const osc = Math.sin(2 * Math.PI * this.frequencyHz * elapsed);
+    const osc = Math.sin(2 * Math.PI * this.frequencyHz * (elapsed - this.delay));
     const value = osc * this.depth;
     return value === 0 ? 0 : value;
   }

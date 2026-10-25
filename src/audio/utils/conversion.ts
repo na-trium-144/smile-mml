@@ -115,7 +115,7 @@ export function resolveModulationConfig(
   let depth = 0;
   if (target.type === "autoPan") {
     // Amplitude +/- (Depth * Range / 2) on 0-127 scale -> 0.0 to 1.0 pan
-    depth = Math.min(1.0, (target.depth * target.range) / (2 * 64) / 2);
+    depth = Math.min(1.0, (target.depth * target.range) / 127);
   } else if (target.type === "tremolo") {
     // Gain reduction ratio (0.0 to 1.0)
     depth = Math.min(1.0, (target.depth * target.range) / (2 * 127));

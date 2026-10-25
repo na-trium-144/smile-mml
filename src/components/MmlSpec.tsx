@@ -226,7 +226,13 @@ export function MmlSpec() {
             <span><span className="text-sb3-label">64,1,16,16</span> から微調整するのがおすすめです</span>
           </div>
         </li>
-        {/*- (非公式情報) 多少誤差があるかもですが、まず音の鳴り始めからBPM96の128分音符 (Delay) 個分相当の時間は変化がなく、その後BPM96の (Speed) 分音符相当の長さを1周期としたエフェクトがかかります。Speed=0のときはエフェクトはかかりません。@MLでは現在のパンポットから `±Depth*Range/2` の範囲で変化します。@MAでは現在の `V*@V/127` から `(V*@V/127)-(Depth*Range/2)` の範囲で音の大きさが変化します。@MPでは半音 `±Depth*Range/128` 個分の範囲で変化します。いずれもDepthとRangeの違いはわかりませんでした。 http://petitverse.hosiken.jp/community/petitcom/diary/?read=4221&ukey=0*/}
+        {/*- (非公式情報) 多少誤差があるかもですが、
+        まず音の鳴り始めからBPM96の128分音符 (Delay) 個分相当の時間は変化がなく、その後BPM96の (Speed) 分音符相当の長さを1周期としたエフェクトがかかります。
+        Speed=0のときはエフェクトはかかりません。
+        @MLでは現在のパンポットから `±Depth*Range/2` の範囲で変化します。
+        @MAでは現在の `V*@V/127` から `(V*@V/127)-(Depth*Range/2)` の範囲で音の大きさが変化します。
+        @MPでは半音 `±Depth*Range/128` 個分の範囲で変化します。
+        いずれもDepthとRangeの違いはわかりませんでした。 http://petitverse.hosiken.jp/community/petitcom/diary/?read=4221&ukey=0*/}
         <li>
           モジュレーション終了 <span className="text-sb3-label">@MOF</span>
         </li>
