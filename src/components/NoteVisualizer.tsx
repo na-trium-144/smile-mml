@@ -612,7 +612,7 @@ export const NoteVisualizer: FC<NoteVisualizerProps> = ({
                       : currentPrograms[ci].type === "nds"
                         ? "badge-accent"
                         : currentPrograms[ci].type === "userWave"
-                          ? "badge-primary"
+                          ? "badge-info"
                           : "badge-ghost text-sb3-label",
                 )}
               >

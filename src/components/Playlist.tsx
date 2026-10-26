@@ -39,7 +39,7 @@ export function usePlaylist() {
 }
 
 export function PlaylistProvider({ children }: { children: ReactNode }) {
-  const { userWaveBank } = useInstrumentContext();
+  const { loadWavset } = useInstrumentContext();
   const [files, setFiles] = useState<Readonly<MmlFile>[]>([
     { isSample: true, name: "サンプル1", content: sample1 },
     { isSample: true, name: "サンプル2", content: sample2 },
@@ -52,7 +52,7 @@ export function PlaylistProvider({ children }: { children: ReactNode }) {
       const reader = new FileReader();
       reader.onload = (event) => {
         const content = event.target?.result as string;
-        userWaveBank.loadWavset(content);
+        loadWavset(content);
         const parsedAsPrg = extractSmileBasicMML(content);
         if (parsedAsPrg.length >= 1) {
           setFiles((prev) =>
@@ -79,7 +79,7 @@ export function PlaylistProvider({ children }: { children: ReactNode }) {
       };
       reader.readAsText(file);
     },
-    [files, userWaveBank],
+    [files, loadWavset],
   );
 
   const newFile = useCallback(() => {
@@ -94,7 +94,7 @@ export function PlaylistProvider({ children }: { children: ReactNode }) {
   }
 
   const reParseAsPrg = useCallback(() => {
-    userWaveBank.loadWavset(currentFile.content);
+    loadWavset(currentFile.content);
     const parsedAsPrg = extractSmileBasicMML(currentFile.content);
     if (!currentFile.isSample && parsedAsPrg.length >= 1) {
       setFiles((prev) => [
@@ -107,7 +107,7 @@ export function PlaylistProvider({ children }: { children: ReactNode }) {
         ...prev.slice(currentIndex + 1),
       ]);
     }
-  }, [currentIndex, currentFile, userWaveBank]);
+  }, [currentIndex, currentFile, loadWavset]);
 
   const updateContent = useCallback(
     (content: string) => {

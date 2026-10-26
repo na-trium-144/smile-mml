@@ -26,7 +26,7 @@ const formatTime = (sec: number) => {
 };
 
 export function AudioPlayer() {
-  const { currentBanks } = useInstrumentContext();
+  const { currentBanks, loadWavset } = useInstrumentContext();
   const { currentFile } = usePlaylist();
   const { content: mml } = currentFile;
   
@@ -81,6 +81,8 @@ export function AudioPlayer() {
   const buildScheduler = useCallback<() => MMLScheduler>(() => {
     setErrors([]);
 
+    loadWavset(mml);
+
     const synth = getSynth();
     const scheduler = new MMLScheduler(
       synth,
@@ -111,7 +113,7 @@ export function AudioPlayer() {
     setActiveChannels(scheduler.channels);
     setTotalTime(scheduler.totalDurationSeconds);
     return scheduler;
-  }, [getSynth, mml, currentBanks]);
+  }, [getSynth, mml, currentBanks, loadWavset]);
 
   // Initialize or re-create scheduler when MML changes so totalTime is immediately known
   useEffect(() => {

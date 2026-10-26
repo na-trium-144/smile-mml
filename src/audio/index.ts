@@ -18,11 +18,6 @@ export { SF2InstrumentBank } from './banks/SF2InstrumentBank.js';
 export { NDSInstrumentBank } from './banks/NDSInstrumentBank.js';
 export {
   UserWaveBank,
-  globalUserWaveBank,
-  parseWaveformString,
-  parseWavsetStatements,
-  parseMmlWavMacros,
-  createVoiceData,
 } from './banks/UserWaveBank.js';
 export type { UserWaveDefinition } from './banks/UserWaveBank.js';
 

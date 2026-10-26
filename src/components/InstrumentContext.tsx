@@ -20,16 +20,21 @@ import { NDSInstrumentBank } from "../audio/banks/NDSInstrumentBank.js";
 import clsx from "clsx";
 import {
   BasicWaveBank,
-  globalUserWaveBank,
-  type UserWaveBank,
+  UserWaveBank,
   type InstrumentBank,
+  type UserWaveDefinition,
+  type SampleVoiceData,
 } from "../audio/index.js";
 
 const presetSF2Names = ["GeneralUser GS", "FluidR3 GM"] as const;
 
 interface InstrumentContextValue {
   currentBanks: InstrumentBank[];
-  userWaveBank: UserWaveBank;
+  loadWavset: (code: string) => void;
+  userWaveBankVoices: [
+    number,
+    { def: UserWaveDefinition; voice: SampleVoiceData },
+  ][];
   sf2Name: string | null;
   sf2IsPreset: boolean;
   ndsName: string | null;
@@ -64,17 +69,29 @@ export const InstrumentProvider: FC<{ children: ReactNode }> = ({
   const ndsBufferRef = useRef<ArrayBuffer | null>(null);
 
   const [bankSelected, setBankSelected] = useState<"sf2" | "nds">("sf2");
+
+  const userWaveBank = useRef(new UserWaveBank());
+  const [userWaveBankVoices, setUserWaveBankVoices] = useState<
+    [number, { def: UserWaveDefinition; voice: SampleVoiceData }][]
+  >([]);
+  const loadWavset = useCallback((code: string) => {
+    userWaveBank.current.loadWavset(code);
+    const voices = Array.from(userWaveBank.current.voices.entries());
+    voices.sort((a, b) => a[0] - b[0])
+    setUserWaveBankVoices(voices);
+  }, []);
+
   // set時には前のbankをdisposeする
   const [sf2Bank, setSf2Bank] = useState<SF2InstrumentBank | null>(null);
   const [ndsBank, setNdsBank] = useState<NDSInstrumentBank | null>(null);
   const currentBanks = useMemo<InstrumentBank[]>(() => {
     if (bankSelected === "sf2" && sf2Bank) {
-      return [globalUserWaveBank, new BasicWaveBank(), sf2Bank];
+      return [userWaveBank.current, new BasicWaveBank(), sf2Bank];
     }
     if (bankSelected === "nds" && ndsBank) {
-      return [globalUserWaveBank, ndsBank];
+      return [userWaveBank.current, ndsBank];
     }
-    return [globalUserWaveBank];
+    return [];
   }, [bankSelected, sf2Bank, ndsBank]);
 
   const [sf2IsPreset, setSf2IsPreset] = useState<boolean>(false);
@@ -219,7 +236,8 @@ export const InstrumentProvider: FC<{ children: ReactNode }> = ({
 
   const value: InstrumentContextValue = {
     currentBanks,
-    userWaveBank: globalUserWaveBank,
+    userWaveBankVoices,
+    loadWavset,
     sf2Name,
     sf2IsPreset,
     ndsName,
@@ -245,6 +263,7 @@ export const InstrumentProvider: FC<{ children: ReactNode }> = ({
 
 export function InstrumentSelect() {
   const {
+    userWaveBankVoices,
     sf2Name,
     sf2IsPreset,
     ndsName,
@@ -269,10 +288,20 @@ export function InstrumentSelect() {
                 <span className="badge badge-success badge-sm">{sf2Name}</span>
                 <span className="mx-1 text-sm">+</span>
                 <span className="badge badge-warning badge-sm">波形生成</span>
+                {userWaveBankVoices.length > 0 && <>
+                  <span className="mx-1 text-sm">+</span>
+                  <span className="badge badge-info badge-sm">{userWaveBankVoices.length} 波形定義</span>
+                </>}
               </div>
             )
           : ndsName && (
+            <div>
               <div className="badge badge-accent badge-sm">{ndsName}</div>
+              {userWaveBankVoices.length > 0 && <>
+                  <span className="mx-1 text-sm">+</span>
+                  <span className="badge badge-info badge-sm">{userWaveBankVoices.length} 波形定義</span>
+                </>}
+            </div>
             )}
       </summary>
       <div className="collapse-content flex flex-col">
@@ -441,7 +470,7 @@ export function InstrumentSelect() {
 }
 
 function SF2InstrumentTable() {
-  const { sf2Bank } = useInstrumentContext();
+  const { sf2Bank, userWaveBankVoices } = useInstrumentContext();
   const sf2Programs = sf2Bank?.getAllPrograms() ?? [];
   type HiddenPresetMapped =
     | ({ program: number; pSf2?: (typeof sf2Programs)[number] } & ReturnType<
@@ -568,6 +597,41 @@ function SF2InstrumentTable() {
 
         <label className="tab">
           <input type="radio" name="SF2InstrumentTable" />
+          @224 〜 @255 (ユーザー定義音源)
+        </label>
+        <div className="tab-content bg-base-100 rounded-field">
+          <table className="table table-xs text-center">
+            <thead>
+              <tr>
+                <th>音色番号</th>
+                <th className="max-sm:hidden">A</th>
+                <th className="max-sm:hidden">D</th>
+                <th className="max-sm:hidden">S</th>
+                <th className="max-sm:hidden">R</th>
+                <th className="w-60">波形</th>
+                <th>基準音程</th>
+              </tr>
+            </thead>
+            <tbody>
+              {userWaveBankVoices.map(([program, { def, voice }]) => (
+                <tr key={program} className="text-info-content">
+                  <th className="text-sb3-label">@{program}</th>
+                  <td className="max-sm:hidden">{def.a}</td>
+                  <td className="max-sm:hidden">{def.d}</td>
+                  <td className="max-sm:hidden">{def.s}</td>
+                  <td className="max-sm:hidden">{def.r}</td>
+                  <td className="relative">
+                    <UserWaveform pcm={voice.pcm} />
+                  </td>
+                  <td>{def.basePitch}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        <label className="tab">
+          <input type="radio" name="SF2InstrumentTable" />
           @1000 〜 (SF2 バンク指定)
         </label>
         <div className="tab-content bg-base-100 rounded-field">
@@ -596,5 +660,75 @@ function SF2InstrumentTable() {
         </div>
       </div>
     </>
+  );
+}
+
+function UserWaveform({ pcm }: { pcm: Float32Array }) {
+  const rectRef = useRef<HTMLDivElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const colorInfo = useMemo(
+    () =>
+      getComputedStyle(document.documentElement).getPropertyValue(
+        "--color-info",
+      ),
+    [],
+  );
+  useEffect(() => {
+    const render = () => {
+      const canvasRect = rectRef.current;
+      const canvas = canvasRef.current;
+      const ctx = canvas?.getContext("2d");
+      if (!canvasRect || !canvas || !ctx) return;
+      const dpr = window.devicePixelRatio || 1;
+      const rect = canvasRect.getBoundingClientRect();
+      const width = rect.width;
+      const height = rect.height;
+      const cw = Math.round(width * dpr);
+      const ch = Math.round(height * dpr);
+      canvas.width = cw;
+      canvas.height = ch;
+      canvas.style.height = `${height}px`;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.clearRect(0, 0, width, height);
+      ctx.strokeStyle = colorInfo;
+      ctx.beginPath();
+      for (let i = 0; i < pcm.length; i++) {
+        if (i === 0) {
+          ctx.moveTo(
+            (i / pcm.length) * width,
+            (height / 2) * (1 - pcm[i]),
+          );
+        } else {
+          ctx.lineTo(
+            (i / pcm.length) * width,
+            (height / 2) * (1 - pcm[i]),
+          );
+        }
+        ctx.lineTo(
+          ((i + 1) / pcm.length) * width,
+          (height / 2) * (1 - pcm[i]),
+        );
+      }
+      ctx.lineTo(
+        width,
+        (height / 2) * (1 - pcm[0]),
+      );
+      ctx.lineWidth = 1;
+      ctx.stroke();
+    };
+    const canvasRect = rectRef.current;
+    if (canvasRect) {
+      const observer = new ResizeObserver(render);
+      observer.observe(canvasRect);
+      return () => {
+        observer.unobserve(canvasRect);
+      };
+    }
+  }, [pcm, colorInfo]);
+
+  return (
+    <div ref={rectRef} className="absolute inset-0">
+      <canvas ref={canvasRef} />
+    </div>
   );
 }
