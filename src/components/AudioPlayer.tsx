@@ -36,6 +36,9 @@ export function AudioPlayer() {
   const [activeChannels, setActiveChannels] = useState<number[]>([]);
   const [errors, setErrors] = useState<string[]>([]);
 
+  // increment to reset visualizer
+  const [visualizerState, setVisualizerState] = useState<number>(0);
+
   // Track last-parsed MML to recreate scheduler if MML text changes
   const lastParsedMml = useRef("");
   const mmlHasChanged = useCallback(() => mml !== lastParsedMml.current, [mml]);
@@ -119,6 +122,7 @@ export function AudioPlayer() {
       lastParsedMml.current = mml;
       setCurrentTime(0);
       setPlaybackState(null);
+      setVisualizerState((prev) => prev + 1);
     }
   }, [mml, buildScheduler, mmlHasChanged]);
 
@@ -135,6 +139,7 @@ export function AudioPlayer() {
     }
 
     await schedulerRef.current.play();
+    setVisualizerState((prev) => prev + 1);
     setPlaybackState("playing");
   }, [playbackState, buildScheduler, mmlHasChanged, mml]);
 
@@ -148,6 +153,7 @@ export function AudioPlayer() {
     setPlaybackState("paused");
     schedulerRef.current?.seek(0);
     setCurrentTime(0);
+    setVisualizerState((prev) => prev + 1);
   }, []);
 
   // ── Seek ──
@@ -156,6 +162,7 @@ export function AudioPlayer() {
     const seekTo = parseFloat(e.target.value);
     schedulerRef.current?.seek(seekTo);
     setCurrentTime(seekTo);
+    setVisualizerState((prev) => prev + 1);
   }, []);
 
   return (
@@ -229,6 +236,7 @@ export function AudioPlayer() {
             getCurrentTick={getVisualizerTick}
             isPlaying={playbackState === "playing"}
             getNotesForChannel={getNotesForChannel}
+            key={visualizerState}
           />
         )}
 
