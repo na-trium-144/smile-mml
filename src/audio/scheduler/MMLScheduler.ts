@@ -740,6 +740,8 @@ export class MMLScheduler {
         const targetAudioTime = this.playbackStartAudioTime + eventSec;
 
         if (ev.type === "note") {
+          // ev.type=volumeの際の更新だけでは、seekでvolumeイベントを読み飛ばした時のvolumeが正しくなくなる
+          this.synth.setChannelVolume(ev.event.channel, ev.event.volume, targetAudioTime);
           // TODO: 並列化
           // awaitを外せば並列化できるが、SF2InstrumentBankのOggVorbisDecoderの出力が壊れた。要検証
           // そもそも並列化する必要があるかどうかも要検証

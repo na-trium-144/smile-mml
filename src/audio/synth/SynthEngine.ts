@@ -175,15 +175,19 @@ export class SynthEngine {
         const segDuration = seg.durationSec ?? (i === note.segments.length - 1 ? durationSec - (seg.startTimeOffsetSec ?? 0) : 0);
         const segEndTime = segStartTime + segDuration;
 
+        const prevSeg = note.segments[i-1];
+
         // Set pitch
         if (!voiceData.ignoreKey) {
-          const startRate = getPlaybackRate(seg.noteNumber, seg.detuneCents);
-          src.playbackRate.setValueAtTime(startRate, segStartTime);
+          if(!(prevSeg && prevSeg.isPortamento && prevSeg.portamentoTargetNote !== undefined)){
+            const startRate = getPlaybackRate(seg.noteNumber, seg.detuneCents);
+            src.playbackRate.setValueAtTime(startRate, segStartTime);
+          }
 
           if (seg.isPortamento && seg.portamentoTargetNote !== undefined) {
             const targetDetune = seg.portamentoTargetDetuneCents ?? seg.detuneCents;
             const targetRate = getPlaybackRate(seg.portamentoTargetNote, targetDetune);
-            src.playbackRate.linearRampToValueAtTime(targetRate, segEndTime - 0.001);
+            src.playbackRate.linearRampToValueAtTime(targetRate, segEndTime);
           }
         }
 
@@ -231,14 +235,18 @@ export class SynthEngine {
         const segDuration = seg.durationSec ?? (i === note.segments.length - 1 ? durationSec - (seg.startTimeOffsetSec ?? 0) : 0);
         const segEndTime = segStartTime + segDuration;
 
+        const prevSeg = note.segments[i-1];
+
         // Set pitch
-        const startFreq = midiNoteToFrequency(seg.noteNumber + (voiceData.keyShift ?? 0), seg.detuneCents);
-        osc.frequency.setValueAtTime(startFreq, segStartTime);
+        if(!(prevSeg && prevSeg.isPortamento && prevSeg.portamentoTargetNote !== undefined)){
+          const startFreq = midiNoteToFrequency(seg.noteNumber + (voiceData.keyShift ?? 0), seg.detuneCents);
+          osc.frequency.setValueAtTime(startFreq, segStartTime);
+        }
 
         if (seg.isPortamento && seg.portamentoTargetNote !== undefined) {
           const targetDetune = seg.portamentoTargetDetuneCents ?? seg.detuneCents;
           const targetFreq = midiNoteToFrequency(seg.portamentoTargetNote + (voiceData.keyShift ?? 0), targetDetune);
-          osc.frequency.linearRampToValueAtTime(targetFreq, segEndTime - 0.001);
+          osc.frequency.linearRampToValueAtTime(targetFreq, segEndTime);
         }
 
         // Schedule mid-compound parameter changes (V, P)
