@@ -364,7 +364,7 @@ export const NoteVisualizer: FC<NoteVisualizerProps> = ({
         if(p.synth.modulation?.enabled && p.synth.modulation.type === "tremolo" && moduletionValue !== 0 && beforeRelease){
           ctx2.fillStyle = colorLabel;
           // tremoloのdepthもvolumeも線形でないので単位があっていないが、変換面倒なので一旦これで
-          velDisplay += moduletionValue * 127 * 127;
+          velDisplay += moduletionValue * vel;
         }
         ctx2.beginPath();
         ctx2.roundRect(
