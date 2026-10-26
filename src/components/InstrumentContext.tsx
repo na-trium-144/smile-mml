@@ -18,12 +18,18 @@ import {
 import { SF2InstrumentBank } from "../audio/banks/SF2InstrumentBank.js";
 import { NDSInstrumentBank } from "../audio/banks/NDSInstrumentBank.js";
 import clsx from "clsx";
-import { BasicWaveBank, type InstrumentBank } from "../audio/index.js";
+import {
+  BasicWaveBank,
+  globalUserWaveBank,
+  type UserWaveBank,
+  type InstrumentBank,
+} from "../audio/index.js";
 
 const presetSF2Names = ["GeneralUser GS", "FluidR3 GM"] as const;
 
 interface InstrumentContextValue {
   currentBanks: InstrumentBank[];
+  userWaveBank: UserWaveBank;
   sf2Name: string | null;
   sf2IsPreset: boolean;
   ndsName: string | null;
@@ -63,12 +69,12 @@ export const InstrumentProvider: FC<{ children: ReactNode }> = ({
   const [ndsBank, setNdsBank] = useState<NDSInstrumentBank | null>(null);
   const currentBanks = useMemo<InstrumentBank[]>(() => {
     if (bankSelected === "sf2" && sf2Bank) {
-      return [new BasicWaveBank(), sf2Bank];
+      return [globalUserWaveBank, new BasicWaveBank(), sf2Bank];
     }
     if (bankSelected === "nds" && ndsBank) {
-      return [ndsBank];
+      return [globalUserWaveBank, ndsBank];
     }
-    return [];
+    return [globalUserWaveBank];
   }, [bankSelected, sf2Bank, ndsBank]);
 
   const [sf2IsPreset, setSf2IsPreset] = useState<boolean>(false);
@@ -213,6 +219,7 @@ export const InstrumentProvider: FC<{ children: ReactNode }> = ({
 
   const value: InstrumentContextValue = {
     currentBanks,
+    userWaveBank: globalUserWaveBank,
     sf2Name,
     sf2IsPreset,
     ndsName,

@@ -17,6 +17,7 @@ import { sbDetuneToCents } from "../utils/conversion.js";
 import { ModulationHelper } from "../synth/ModulationHelper.js";
 import { TempoMap } from "./TempoMap.js";
 import type { InstrumentBank } from "../banks/InstrumentBank.js";
+import { globalUserWaveBank, type UserWaveBank } from "../banks/UserWaveBank.js";
 
 interface PendingCompound {
   startTick: number;
@@ -36,7 +37,8 @@ interface ChannelState {
 
 export class MMLScheduler {
   private synth: SynthEngine;
-  private instrumentBanks: InstrumentBank[];
+  private userWaveBank: UserWaveBank;
+  private instrumentBanks: InstrumentBank[] = [];
   private tempoMap: TempoMap;
   public onError: (e: unknown) => void;
 
@@ -91,7 +93,10 @@ export class MMLScheduler {
   public onEnded?: () => void;
 
   setInstrumentBanks(banks: InstrumentBank[]){
-    this.instrumentBanks = banks;
+    this.instrumentBanks = [
+      this.userWaveBank,
+      ...banks.filter((b) => b !== this.userWaveBank && b.type !== "userWave"),
+    ];
   }
 
   constructor(
@@ -101,8 +106,12 @@ export class MMLScheduler {
     onError: (e: unknown) => void,
   ) {
     this.synth = synth;
-    this.instrumentBanks = banks;
     this.onError = onError;
+    this.userWaveBank =
+      (banks.find((b) => b.type === "userWave") as UserWaveBank) ??
+      globalUserWaveBank;
+    this.userWaveBank.loadMmlMacros(mml);
+    this.setInstrumentBanks(banks);
     this.tempoMap = new TempoMap([], MMLScheduler.ticksPerWholeNote);
 
     const { channels, initialKeyShift } = splitMMLChannels(mml);

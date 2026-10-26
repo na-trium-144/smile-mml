@@ -45,6 +45,14 @@ export function MmlSpec() {
             {"}"}
           </span>
         </li>
+        <li>
+          ユーザー定義音源{" "}
+          <span className="text-sb3-keyword">
+            {"{"}
+            WAV<var>定義番号</var>=<var>A</var>,<var>D</var>,<var>S</var>,<var>R</var>,<var>波形文字列</var>[,<var>基準音程</var>]
+            {"}"}
+          </span>
+        </li>
       </ul>
       <h4>音符</h4>
       <ul>

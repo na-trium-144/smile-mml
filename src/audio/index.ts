@@ -16,6 +16,15 @@ export type { InstrumentBank } from './banks/InstrumentBank.js';
 export { BasicWaveBank } from './banks/BasicWaveBank.js';
 export { SF2InstrumentBank } from './banks/SF2InstrumentBank.js';
 export { NDSInstrumentBank } from './banks/NDSInstrumentBank.js';
+export {
+  UserWaveBank,
+  globalUserWaveBank,
+  parseWaveformString,
+  parseWavsetStatements,
+  parseMmlWavMacros,
+  createVoiceData,
+} from './banks/UserWaveBank.js';
+export type { UserWaveDefinition } from './banks/UserWaveBank.js';
 
 // Synthesis engine
 export { SynthEngine } from './synth/SynthEngine.js';

@@ -97,7 +97,7 @@ export const NoteVisualizer: FC<NoteVisualizerProps> = ({
     (
       | {
           program: number;
-          type: "sf2" | "nds" | "basicWave" | undefined;
+          type: "sf2" | "nds" | "basicWave" | "userWave" | undefined;
           envelopeEnabled: boolean;
         }
       | undefined
@@ -611,7 +611,9 @@ export const NoteVisualizer: FC<NoteVisualizerProps> = ({
                       ? "badge-warning"
                       : currentPrograms[ci].type === "nds"
                         ? "badge-accent"
-                        : "badge-ghost text-sb3-label",
+                        : currentPrograms[ci].type === "userWave"
+                          ? "badge-primary"
+                          : "badge-ghost text-sb3-label",
                 )}
               >
                 {currentPrograms[ci].program}
