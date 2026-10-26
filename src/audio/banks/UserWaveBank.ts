@@ -30,46 +30,49 @@ export class UserWaveBank implements InstrumentBank {
     const mulMatch = def.waveform.match(
       /^["']?([0-9a-fA-F]+)["']?\s*\*\s*(\d+)$/,
     );
-    let cleanHex = def.waveform;
+    let cleanHex: string | undefined = undefined;
     if (mulMatch) {
       cleanHex = mulMatch[1].repeat(parseInt(mulMatch[2], 10));
     } else {
-      cleanHex = def.waveform.replace(/[^0-9a-fA-F]/g, "");
+      cleanHex = def.waveform.match(/^[0-9a-fA-F]*$/)?.[0];
     }
+    if(cleanHex && cleanHex.length >= 2){
+      // 波形文字列が1周期の波で基準音程が33のときに再生される音が鳴らした音程と一致するようなサンプルレートで再生する。
+      // midiNoteToFrequency(33) = 55 Hz.
+      // 1周期が pcm.length サンプルの場合、55 Hz で1周期再生するための sampleRate = 55 * pcm.length
+      // WebAudioで55*16Hzのような低サンプルレートな波形を正しく再生できないので、40000Hz前後でリサンプリング
+      const numSamples = Math.floor(cleanHex.length / 2);
+      const sampleRate = 55 * numSamples;
+      const factor = Math.ceil(48000 / sampleRate);
+      const pcm = new Float32Array(numSamples * factor);
+      for (let i = 0; i < numSamples; i++) {
+        const byte = parseInt(cleanHex.slice(i * 2, i * 2 + 2), 16);
+        // 80 (128) -> 0.0, 00 (0) -> -1.0, FF (255) -> +1.0
+        pcm.fill((byte - 128) / 128, i * factor, (i+1)*factor);
+      }
 
-    const numSamples = Math.floor(cleanHex.length / 2);
-    const pcm = new Float32Array(numSamples);
-    for (let i = 0; i < numSamples; i++) {
-      const byte = parseInt(cleanHex.slice(i * 2, i * 2 + 2), 16);
-      // 80 (128) -> 0.0, 00 (0) -> -1.0, FF (255) -> +1.0
-      pcm[i] = byte >= 128 ? (byte - 128) / 127 : (byte - 128) / 128;
+
+      this.voices.set(def.program, {
+        def,
+        voice: {
+        kind: "sample",
+        pcm,
+        sampleRate: sampleRate * factor,
+        rootKey: def.basePitch,
+        fineTune: 0,
+        loop: true,
+        loopStart: 0,
+        loopEnd: pcm.length,
+        defaultEnvelope: convertSmileBASICEnvelope({
+          a: def.a,
+          d: def.d,
+          s: def.s,
+          r: def.r,
+        }),
+        defaultPan: 0,
+        attenuation: 0.5,
+      }});
     }
-
-    // 波形文字列が1周期の波で基準音程が33のときに再生される音が鳴らした音程と一致するようなサンプルレートで再生する。
-    // midiNoteToFrequency(33) = 55 Hz.
-    // 1周期が pcm.length サンプルの場合、55 Hz で1周期再生するための sampleRate = 55 * pcm.length
-    const sampleRate = Math.max(1, 55 * pcm.length);
-
-    this.voices.set(def.program, {
-      def,
-      voice: {
-      kind: "sample",
-      pcm,
-      sampleRate,
-      rootKey: def.basePitch,
-      fineTune: 0,
-      loop: true,
-      loopStart: 0,
-      loopEnd: pcm.length,
-      defaultEnvelope: convertSmileBASICEnvelope({
-        a: def.a,
-        d: def.d,
-        s: def.s,
-        r: def.r,
-      }),
-      defaultPan: 0,
-      attenuation: 0.5,
-    }});
   }
 
   /**

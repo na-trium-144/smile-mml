@@ -345,18 +345,8 @@ export class SynthEngine {
   ): AudioBuffer {
     let buf = this.audioBufferCache.get(pcm);
     if (!buf) {
-      if (sampleRate < 8000 && pcm.length > 0) {
-        const factor = Math.ceil(8000 / sampleRate);
-        const newPcm = new Float32Array(pcm.length * factor);
-        for (let i = 0; i < pcm.length; i++) {
-          newPcm.fill(pcm[i], i * factor, (i+1)*factor);
-        }
-        buf = this.ctx.createBuffer(1, newPcm.length, sampleRate * factor);
-        buf.copyToChannel(newPcm, 0);
-      } else {
-        buf = this.ctx.createBuffer(1, pcm.length, sampleRate);
-        buf.copyToChannel(new Float32Array(pcm), 0);
-      }
+      buf = this.ctx.createBuffer(1, pcm.length, sampleRate);
+      buf.copyToChannel(new Float32Array(pcm), 0);
       this.audioBufferCache.set(pcm, buf);
     }
     return buf;
