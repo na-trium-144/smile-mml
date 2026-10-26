@@ -105,7 +105,7 @@ export interface PostProcessedNote {
     modulation?: ModulationHelper; // final modulation, set in SynthEngine.playNote() or MMLScheduler
     durationSec?: number; // set in MMLScheduler.scheduleNote()
     gateDurationSec?: number; // set in MMLScheduler.scheduleNote()
-    voiceType?: "sf2" | "basicWave" | "nds"; // set in MMLScheduler.scheduleNote()
+    voiceType?: "sf2" | "basicWave" | "nds" | "userWave"; // set in MMLScheduler.scheduleNote()
   };
 }
 

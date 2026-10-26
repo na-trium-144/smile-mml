@@ -11,6 +11,7 @@ import sample1 from "../samples/sample1.mml?raw";
 import sample2 from "../samples/get_started_merged.mml?raw";
 import sample3 from "../samples/NA_NN.MML?raw";
 import { extractSmileBasicMML } from "../parser/smilebasicPrg";
+import { useInstrumentContext } from "./InstrumentContext.js";
 
 interface MmlFile {
   isSample?: boolean;
@@ -38,6 +39,7 @@ export function usePlaylist() {
 }
 
 export function PlaylistProvider({ children }: { children: ReactNode }) {
+  const { loadWavset } = useInstrumentContext();
   const [files, setFiles] = useState<Readonly<MmlFile>[]>([
     { isSample: true, name: "サンプル1", content: sample1 },
     { isSample: true, name: "サンプル2", content: sample2 },
@@ -50,6 +52,7 @@ export function PlaylistProvider({ children }: { children: ReactNode }) {
       const reader = new FileReader();
       reader.onload = (event) => {
         const content = event.target?.result as string;
+        loadWavset(content);
         const parsedAsPrg = extractSmileBasicMML(content);
         if (parsedAsPrg.length >= 1) {
           setFiles((prev) =>
@@ -76,7 +79,7 @@ export function PlaylistProvider({ children }: { children: ReactNode }) {
       };
       reader.readAsText(file);
     },
-    [files],
+    [files, loadWavset],
   );
 
   const newFile = useCallback(() => {
@@ -91,6 +94,7 @@ export function PlaylistProvider({ children }: { children: ReactNode }) {
   }
 
   const reParseAsPrg = useCallback(() => {
+    loadWavset(currentFile.content);
     const parsedAsPrg = extractSmileBasicMML(currentFile.content);
     if (!currentFile.isSample && parsedAsPrg.length >= 1) {
       setFiles((prev) => [
@@ -103,7 +107,7 @@ export function PlaylistProvider({ children }: { children: ReactNode }) {
         ...prev.slice(currentIndex + 1),
       ]);
     }
-  }, [currentIndex, currentFile]);
+  }, [currentIndex, currentFile, loadWavset]);
 
   const updateContent = useCallback(
     (content: string) => {
