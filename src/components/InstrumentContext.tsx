@@ -670,6 +670,31 @@ function InstrumentTable() {
           @224 〜 @255 (ユーザー定義音源)
         </label>
         <div className="tab-content">
+          <p className="ml-2 my-1 text-paragraph text-sm">
+            インポートした SmileBASIC プログラム または MML 編集欄に{" "}
+            <span className="text-sb3-statement">
+              WAVSET <var className="italic opacity-60">定義番号</var>,
+              <var className="italic opacity-60">A</var>,
+              <var className="italic opacity-60">D</var>,
+              <var className="italic opacity-60">S</var>,
+              <var className="italic opacity-60">R</var>,
+              <var className="italic opacity-60">"波形文字列"</var>,
+              <var className="italic opacity-60">基準音程</var>
+            </span>{" "}
+            文、 または{" "}
+            <span className="text-sb3-keyword">
+              {"{"}
+              WAV<var className="italic opacity-60">定義番号</var>=
+              <var className="italic opacity-60">A</var>,
+              <var className="italic opacity-60">D</var>,
+              <var className="italic opacity-60">S</var>,
+              <var className="italic opacity-60">R</var>,
+              <var className="italic opacity-60">波形文字列</var>,
+              <var className="italic opacity-60">基準音程</var>
+              {"}"}
+            </span>{" "}
+            マクロが含まれている場合、ユーザー定義波形として読み込みます。
+          </p>
           <table className="table table-xs text-center bg-base-100 rounded-field">
             <thead>
               <tr>
