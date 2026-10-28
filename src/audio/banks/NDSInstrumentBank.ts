@@ -127,15 +127,34 @@ export class NDSInstrumentBank implements InstrumentBank {
     console.log(this.swarList);
   }
 
-  public hasProgram(program: number): boolean {
-    if (!this.sdat || this.sbnkList.length === 0) return false;
-    // Check main SBNK (bank 0) or matching bank index
-    const mainBank = this.sbnkList[0];
-    return (
-      program >= 0 &&
-      program < mainBank.instruments.length &&
-      mainBank.instruments[program] !== undefined
-    );
+  public listPrograms() {
+    const programs: {
+      program: number;
+      type: string;
+      duty?: number;
+    }[] = [];
+    if (!this.sdat || this.sbnkList.length === 0) return programs;
+    for (let i = 0; i < this.sbnkList.length; i++) {
+      for (
+        let program = 0;
+        program < this.sbnkList[i].instruments.length;
+        program++
+      ) {
+        const inst = this.sbnkList[i].instruments[program];
+        if (inst) {
+          programs.push({
+            program: i * 1000 + program,
+            type: Audio.InstrumentType[inst.type],
+            duty:
+              inst.type === Audio.InstrumentType.PSG
+                ? (inst as InstanceType<typeof Audio.DirectInstrument>).noteInfo
+                    .waveId % 7
+                : undefined,
+          });
+        }
+      }
+    }
+    return programs;
   }
 
   public getVoice(
@@ -147,7 +166,9 @@ export class NDSInstrumentBank implements InstrumentBank {
       throw new Error("sdat is empty");
     }
 
-    const mainBank = this.sbnkList[0];
+    const bankId = Math.floor(program / 1000);
+    program = program % 1000;
+    const mainBank = this.sbnkList[bankId];
     const inst = mainBank.instruments[program];
     if (!inst) {
       throw new Error(`inst for program ${program} not found`);

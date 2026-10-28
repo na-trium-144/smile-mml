@@ -77,7 +77,7 @@ export const InstrumentProvider: FC<{ children: ReactNode }> = ({
   const loadWavset = useCallback((code: string) => {
     userWaveBank.current.loadWavset(code);
     const voices = Array.from(userWaveBank.current.voices.entries());
-    voices.sort((a, b) => a[0] - b[0])
+    voices.sort((a, b) => a[0] - b[0]);
     setUserWaveBankVoices(voices);
   }, []);
 
@@ -288,20 +288,28 @@ export function InstrumentSelect() {
                 <span className="badge badge-success badge-sm">{sf2Name}</span>
                 <span className="mx-1 text-sm">+</span>
                 <span className="badge badge-warning badge-sm">波形生成</span>
-                {userWaveBankVoices.length > 0 && <>
-                  <span className="mx-1 text-sm">+</span>
-                  <span className="badge badge-info badge-sm">{userWaveBankVoices.length} 波形定義</span>
-                </>}
+                {userWaveBankVoices.length > 0 && (
+                  <>
+                    <span className="mx-1 text-sm">+</span>
+                    <span className="badge badge-info badge-sm">
+                      {userWaveBankVoices.length} 波形定義
+                    </span>
+                  </>
+                )}
               </div>
             )
           : ndsName && (
-            <div>
-              <div className="badge badge-accent badge-sm">{ndsName}</div>
-              {userWaveBankVoices.length > 0 && <>
-                  <span className="mx-1 text-sm">+</span>
-                  <span className="badge badge-info badge-sm">{userWaveBankVoices.length} 波形定義</span>
-                </>}
-            </div>
+              <div>
+                <div className="badge badge-accent badge-sm">{ndsName}</div>
+                {userWaveBankVoices.length > 0 && (
+                  <>
+                    <span className="mx-1 text-sm">+</span>
+                    <span className="badge badge-info badge-sm">
+                      {userWaveBankVoices.length} 波形定義
+                    </span>
+                  </>
+                )}
+              </div>
             )}
       </summary>
       <div className="collapse-content flex flex-col">
@@ -394,7 +402,6 @@ export function InstrumentSelect() {
             <p className="mb-2 text-paragraph text-xs">
               ファイルをドラッグ&ドロップで読み込むこともできます。
             </p>
-            <SF2InstrumentTable />
           </>
         ) : (
           <>
@@ -464,13 +471,16 @@ export function InstrumentSelect() {
             <span>{loadError}</span>
           </div>
         )}
+
+        <InstrumentTable />
       </div>
     </details>
   );
 }
 
-function SF2InstrumentTable() {
-  const { sf2Bank, userWaveBankVoices } = useInstrumentContext();
+function InstrumentTable() {
+  const { bankSelected, sf2Bank, userWaveBankVoices, ndsBank } =
+    useInstrumentContext();
   const sf2Programs = sf2Bank?.getAllPrograms() ?? [];
   type HiddenPresetMapped =
     | ({ program: number; pSf2?: (typeof sf2Programs)[number] } & ReturnType<
@@ -495,112 +505,172 @@ function SF2InstrumentTable() {
   hiddenPresetMapped.sort((a, b) => a.program - b.program);
   return (
     <>
-      <p className="my-1 text-paragraph text-sm">
-        <span className="text-sb3-label">@0</span> 〜{" "}
-        <span className="text-sb3-label">@127</span> はGM音源と同一です。{" "}
-        <span className="text-sb3-label">@128</span>{" "}
-        以降の隠し音源はGM音源の近い音色またはドラムセットで置き換えています。
-        (BEEP音など置き換え先を用意していない音色もあります。)
-      </p>
-      <p className="my-1 text-paragraph text-sm">
-        PSG音源、ノイズ、ノコギリ波、サイン波
-        はサウンドフォントを使わずに生成します。
-      </p>
-      <p className="my-1 text-paragraph text-sm">
-        SmileMML 独自の拡張として <span className="text-sb3-label">@131</span>{" "}
-        〜 <span className="text-sb3-label">@143</span>{" "}
-        にGM2標準のドラムセットを、 <span className="text-sb3-label">@159</span>{" "}
-        に プチコンmkII 仕様のノイズを追加しています。 また、{" "}
-        <span className="text-sb3-label">
-          @ バンク番号 × 1000 + プリセット番号
-        </span>{" "}
-        でSF2音源に含まれるその他の非標準の音色を使用できます。
-      </p>
       <h3 className="mt-2">使用可能な音色一覧</h3>
       <div className="tabs tabs-border tabs-sm">
         <label className="tab">
-          <input type="radio" name="SF2InstrumentTable" defaultChecked />
-          @0 〜 @127 (GM音源)
+          <input type="radio" name="InstrumentTable" defaultChecked />
+          @0 〜 @127 {bankSelected === "sf2" ? "(GM音源)" : "(NDS音源)"}
         </label>
-        <div className="tab-content bg-base-100 rounded-field">
-          <table className="table table-xs text-center">
-            <thead>
-              <tr>
-                <th>音色番号</th>
-                <th>名前</th>
-              </tr>
-            </thead>
-            <tbody>
-              {sf2Programs.map(
-                ({ program, name }) =>
-                  program < 128 && (
-                    <tr key={program}>
-                      <th className="text-sb3-label">@{program}</th>
-                      <td className="text-success-content">{name}</td>
-                    </tr>
-                  ),
-              )}
-            </tbody>
-          </table>
+        <div className="tab-content">
+          {bankSelected === "sf2" ? (
+            <>
+              <p className="ml-2 my-1 text-paragraph text-sm">
+                <span className="text-sb3-label">@0</span> 〜{" "}
+                <span className="text-sb3-label">@127</span>{" "}
+                はGM音源と同一です。
+              </p>
+              <table className="table table-xs text-center bg-base-100 rounded-field">
+                <thead>
+                  <tr>
+                    <th>音色番号</th>
+                    <th>名前</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sf2Programs.map(
+                    ({ program, name }) =>
+                      program < 128 && (
+                        <tr key={program}>
+                          <th className="text-sb3-label">@{program}</th>
+                          <td className="text-success-content">{name}</td>
+                        </tr>
+                      ),
+                  )}
+                </tbody>
+              </table>
+            </>
+          ) : (
+            <>
+              <table className="table table-xs text-center bg-base-100 rounded-field">
+                <thead>
+                  <tr>
+                    <th>音色番号</th>
+                    <th>種類</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {ndsBank?.listPrograms().map(
+                    ({ program, type, duty }) =>
+                      program < 128 && (
+                        <tr key={program}>
+                          <th className="text-sb3-label">@{program}</th>
+                          <td className="text-accent-content">
+                            {type} {duty}
+                          </td>
+                        </tr>
+                      ),
+                  )}
+                </tbody>
+              </table>
+            </>
+          )}
         </div>
 
         <label className="tab">
-          <input type="radio" name="SF2InstrumentTable" />
+          <input type="radio" name="InstrumentTable" />
           @128 〜 (ドラム / 隠し音源)
         </label>
-        <div className="tab-content bg-base-100 rounded-field">
-          <table className="table table-xs text-center">
-            <thead>
-              <tr>
-                <th>音色番号</th>
-                <th>置き換え先</th>
-                <th>名前</th>
-                <th>備考</th>
-              </tr>
-            </thead>
-            <tbody>
-              {hiddenPresetMapped.map((p) =>
-                "pSf2" in p && p.pSf2 ? (
-                  <tr key={p.program}>
-                    <th className="text-sb3-label">@{p.program}</th>
-                    <td className="text-success-content">@{p.pSf2.program}</td>
-                    <td className="text-success-content">{p.pSf2.name} </td>
-                    <td>
-                      {p.keyShift &&
-                        `キー ${p.keyShift.toLocaleString("en", {
-                          signDisplay: "always",
-                          useGrouping: false,
-                        })}`}
-                    </td>
+        <div className="tab-content">
+          {bankSelected === "sf2" ? (
+            <>
+              <p className="ml-2 my-1 text-paragraph text-sm">
+                <span className="text-sb3-label">@128</span>{" "}
+                以降の隠し音源はGM音源の近い音色またはドラムセットで置き換えています。
+                (BEEP音など置き換え先を用意していない音色もあります。)
+              </p>
+              <p className="ml-2 my-1 text-paragraph text-sm">
+                PSG音源、ノイズ、ノコギリ波、サイン波
+                はサウンドフォントを使わずに生成します。
+              </p>
+              <p className="ml-2 my-1 text-paragraph text-sm">
+                SmileMML 独自の拡張として{" "}
+                <span className="text-sb3-label">@131</span> 〜{" "}
+                <span className="text-sb3-label">@143</span>{" "}
+                にGM2標準のドラムセットを、{" "}
+                <span className="text-sb3-label">@159</span> に プチコンmkII
+                仕様のノイズを追加しています。
+              </p>
+              <table className="table table-xs text-center bg-base-100 rounded-field">
+                <thead>
+                  <tr>
+                    <th>音色番号</th>
+                    <th>置き換え先</th>
+                    <th>名前</th>
+                    <th>備考</th>
                   </tr>
-                ) : (
-                  "type" in p && (
-                    <tr key={p.program}>
-                      <th className="text-sb3-label">@{p.program}</th>
-                      <td className="text-warning-content"></td>
-                      <td className="text-warning-content">{p.name}</td>
-                      <td>
-                        {p.ignoreKey && "キー固定"}
-                        {p.keyShift &&
-                          `キー ${p.keyShift.toLocaleString("en", {
-                            signDisplay: "always",
-                            useGrouping: false,
-                          })}`}
-                      </td>
-                    </tr>
-                  )
-                ),
-              )}
-            </tbody>
-          </table>
+                </thead>
+                <tbody>
+                  {hiddenPresetMapped.map((p) =>
+                    "pSf2" in p && p.pSf2 ? (
+                      <tr key={p.program}>
+                        <th className="text-sb3-label">@{p.program}</th>
+                        <td className="text-success-content">
+                          @{p.pSf2.program}
+                        </td>
+                        <td className="text-success-content">{p.pSf2.name} </td>
+                        <td>
+                          {p.keyShift &&
+                            `キー ${p.keyShift.toLocaleString("en", {
+                              signDisplay: "always",
+                              useGrouping: false,
+                            })}`}
+                        </td>
+                      </tr>
+                    ) : (
+                      "type" in p && (
+                        <tr key={p.program}>
+                          <th className="text-sb3-label">@{p.program}</th>
+                          <td className="text-warning-content"></td>
+                          <td className="text-warning-content">{p.name}</td>
+                          <td>
+                            {p.ignoreKey && "キー固定"}
+                            {p.keyShift &&
+                              `キー ${p.keyShift.toLocaleString("en", {
+                                signDisplay: "always",
+                                useGrouping: false,
+                              })}`}
+                          </td>
+                        </tr>
+                      )
+                    ),
+                  )}
+                </tbody>
+              </table>
+            </>
+          ) : (
+            <>
+              <table className="table table-xs text-center bg-base-100 rounded-field">
+                <thead>
+                  <tr>
+                    <th>音色番号</th>
+                    <th>種類</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {ndsBank?.listPrograms().map(
+                    ({ program, type, duty }) =>
+                      program >= 128 &&
+                      program < 1000 && (
+                        <tr key={program}>
+                          <th className="text-sb3-label">@{program}</th>
+                          <td className="text-accent-content">
+                            {type} {duty}
+                          </td>
+                        </tr>
+                      ),
+                  )}
+                </tbody>
+              </table>
+            </>
+          )}
         </div>
 
         <label className="tab">
-          <input type="radio" name="SF2InstrumentTable" />
+          <input type="radio" name="InstrumentTable" />
           @224 〜 @255 (ユーザー定義音源)
         </label>
-        <div className="tab-content bg-base-100 rounded-field">
-          <table className="table table-xs text-center">
+        <div className="tab-content">
+          <table className="table table-xs text-center bg-base-100 rounded-field">
             <thead>
               <tr>
                 <th>音色番号</th>
@@ -631,32 +701,66 @@ function SF2InstrumentTable() {
         </div>
 
         <label className="tab">
-          <input type="radio" name="SF2InstrumentTable" />
-          @1000 〜 (SF2 バンク指定)
+          <input type="radio" name="InstrumentTable" />
+          @1000 〜 (バンク指定)
         </label>
-        <div className="tab-content bg-base-100 rounded-field">
-          <table className="table table-xs text-center">
-            <thead>
-              <tr>
-                <th>音色番号</th>
-                <th>名前</th>
-              </tr>
-            </thead>
-            <tbody>
-              {sf2Bank?.getAllPrograms().map(
-                ({ program, name }) =>
-                  program >= 1000 && (
-                    <tr key={program}>
-                      <th className="text-sb3-label">
-                        @ {Math.floor(program / 1000)}{" "}
-                        {(program % 1000).toString().padStart(3, "0")}
-                      </th>
-                      <td className="text-success-content">{name}</td>
-                    </tr>
-                  ),
-              )}
-            </tbody>
-          </table>
+        <div className="tab-content">
+          <p className="ml-2 my-1 text-paragraph text-sm">
+            SmileMML 独自の拡張として{" "}
+            <span className="text-sb3-label">
+              @ バンク番号 × 1000 + プリセット番号
+            </span>{" "}
+            で音源に含まれるその他の非標準の音色を使用できます。
+          </p>
+          {bankSelected === "sf2" ? (
+            <table className="table table-xs text-center bg-base-100 rounded-field">
+              <thead>
+                <tr>
+                  <th>音色番号</th>
+                  <th>名前</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sf2Bank?.getAllPrograms().map(
+                  ({ program, name }) =>
+                    program >= 1000 && (
+                      <tr key={program}>
+                        <th className="text-sb3-label">
+                          @ {Math.floor(program / 1000)}{" "}
+                          {(program % 1000).toString().padStart(3, "0")}
+                        </th>
+                        <td className="text-success-content">{name}</td>
+                      </tr>
+                    ),
+                )}
+              </tbody>
+            </table>
+          ) : (
+            <table className="table table-xs text-center bg-base-100 rounded-field">
+              <thead>
+                <tr>
+                  <th>音色番号</th>
+                  <th>種類</th>
+                </tr>
+              </thead>
+              <tbody>
+                {ndsBank?.listPrograms().map(
+                  ({ program, type, duty }) =>
+                    program >= 1000 && (
+                      <tr key={program}>
+                        <th className="text-sb3-label">
+                          @ {Math.floor(program / 1000)}{" "}
+                          {(program % 1000).toString().padStart(3, "0")}
+                        </th>
+                        <td className="text-accent-content">
+                          {type} {duty}
+                        </td>
+                      </tr>
+                    ),
+                )}
+              </tbody>
+            </table>
+          )}
         </div>
       </div>
     </>
@@ -694,25 +798,13 @@ function UserWaveform({ pcm }: { pcm: Float32Array }) {
       ctx.beginPath();
       for (let i = 0; i < pcm.length; i++) {
         if (i === 0) {
-          ctx.moveTo(
-            (i / pcm.length) * width,
-            (height / 2) * (1 - pcm[i]),
-          );
+          ctx.moveTo((i / pcm.length) * width, (height / 2) * (1 - pcm[i]));
         } else {
-          ctx.lineTo(
-            (i / pcm.length) * width,
-            (height / 2) * (1 - pcm[i]),
-          );
+          ctx.lineTo((i / pcm.length) * width, (height / 2) * (1 - pcm[i]));
         }
-        ctx.lineTo(
-          ((i + 1) / pcm.length) * width,
-          (height / 2) * (1 - pcm[i]),
-        );
+        ctx.lineTo(((i + 1) / pcm.length) * width, (height / 2) * (1 - pcm[i]));
       }
-      ctx.lineTo(
-        width,
-        (height / 2) * (1 - pcm[0]),
-      );
+      ctx.lineTo(width, (height / 2) * (1 - pcm[0]));
       ctx.lineWidth = 1;
       ctx.stroke();
     };
