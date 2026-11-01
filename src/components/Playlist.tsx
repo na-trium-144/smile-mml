@@ -12,6 +12,7 @@ import sample2 from "../samples/get_started_merged.mml?raw";
 import sample3 from "../samples/NA_NN.MML?raw";
 import { extractSmileBasicMML } from "../parser/smilebasicPrg";
 import { useInstrumentContext } from "./InstrumentContext.js";
+import { MidiImportModal } from "./MidiImportModal.js";
 
 interface MmlFile {
   isSample?: boolean;
@@ -24,6 +25,7 @@ interface Playlist {
   currentIndex: number;
   setCurrentIndex: (id: number) => void;
   loadFile: (file: File) => void;
+  addFile: (name: string, content: string) => void;
   newFile: () => void;
   updateContent: (content: string) => void;
   reParseAsPrg: () => void;
@@ -46,40 +48,71 @@ export function PlaylistProvider({ children }: { children: ReactNode }) {
     { isSample: true, name: "サンプル3", content: sample3 },
   ]);
   const [currentIndex, setCurrentIndex] = useState<number>(0);
+  const [pendingMidi, setPendingMidi] = useState<{
+    file: File;
+    buffer: ArrayBuffer;
+  } | null>(null);
+
+  const addFile = useCallback((name: string, content: string) => {
+    loadWavset(content);
+    setFiles((prev) => {
+      const nextIndex = prev.length;
+      setCurrentIndex(nextIndex);
+      return prev.concat([
+        {
+          name: extractMacro(content, "TITLE", false) || name || "無題",
+          content,
+        },
+      ]);
+    });
+  }, [loadWavset]);
 
   const loadFile = useCallback(
-    (file: File) => {
+    async (file: File) => {
+      const ext = file.name.slice(file.name.lastIndexOf(".")).toLowerCase();
+      if (ext === ".mid" || ext === ".midi") {
+        try {
+          const buffer = await file.arrayBuffer();
+          setPendingMidi({ file, buffer });
+        } catch (e) {
+          console.error("Failed to read MIDI file:", e);
+        }
+        return;
+      }
+
       const reader = new FileReader();
       reader.onload = (event) => {
         const content = event.target?.result as string;
         loadWavset(content);
         const parsedAsPrg = extractSmileBasicMML(content);
         if (parsedAsPrg.length >= 1) {
-          setFiles((prev) =>
-            prev.concat(
+          setFiles((prev) => {
+            const nextIndex = prev.length;
+            setCurrentIndex(nextIndex);
+            return prev.concat(
               parsedAsPrg.map(({ label, content }) => ({
                 name:
                   extractMacro(content, "TITLE", false) || label || file.name,
                 content: content,
               })),
-            ),
-          );
-          setCurrentIndex(files.length);
+            );
+          });
         } else {
-          setFiles((prev) =>
-            prev.concat([
+          setFiles((prev) => {
+            const nextIndex = prev.length;
+            setCurrentIndex(nextIndex);
+            return prev.concat([
               {
                 name: extractMacro(content, "TITLE", false) || file.name,
                 content: content,
               },
-            ]),
-          );
-          setCurrentIndex(files.length);
+            ]);
+          });
         }
       };
       reader.readAsText(file);
     },
-    [files, loadWavset],
+    [loadWavset],
   );
 
   const newFile = useCallback(() => {
@@ -162,12 +195,24 @@ export function PlaylistProvider({ children }: { children: ReactNode }) {
         setCurrentIndex,
         currentFile,
         loadFile,
+        addFile,
         newFile,
         updateContent,
         reParseAsPrg,
       }}
     >
       {children}
+      {pendingMidi && (
+        <MidiImportModal
+          file={pendingMidi.file}
+          buffer={pendingMidi.buffer}
+          onImport={(importedTitle, mml) => {
+            addFile(importedTitle, mml);
+            setPendingMidi(null);
+          }}
+          onClose={() => setPendingMidi(null)}
+        />
+      )}
     </PlaylistContext.Provider>
   );
 }

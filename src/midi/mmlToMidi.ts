@@ -1,5 +1,3 @@
-// mmiToMidi.ts is currently not used and temporarily renamed to mmlToMidi.ts_ to silence the type checker.
-
 /**
  * MML to Standard MIDI File Converter
  * Uses the MML parser generator, handles tie merging, and recreates portamento with pitch bends.

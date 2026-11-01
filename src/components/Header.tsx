@@ -1,6 +1,7 @@
 import clsx from "clsx";
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { usePlaylist } from "./Playlist";
+import { convertMmlToMidi } from "../midi";
 
 interface Props {
   children: ReactNode;
@@ -84,8 +85,50 @@ export function WithHeaderAndSidebar(props: Props) {
 }
 
 function SidebarContent() {
-  const { files, currentIndex, setCurrentIndex, loadFile, newFile } =
+  const { files, currentIndex, setCurrentIndex, currentFile, loadFile, newFile } =
     usePlaylist();
+  const [exportError, setExportError] = useState<string | null>(null);
+
+  const handleExportMidi = () => {
+    try {
+      setExportError(null);
+      const songTitle = currentFile.name.trim() || "Untitled";
+      const midiBytes = convertMmlToMidi(currentFile.content, { songTitle });
+      const blob = new Blob([new Uint8Array(midiBytes)], { type: "audio/midi" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${songTitle}.mid`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (e: any) {
+      console.error("MIDI export failed:", e);
+      setExportError(`MIDIエクスポート失敗: ${e?.message || e}`);
+    }
+  };
+
+  const handleExportMml = () => {
+    try {
+      setExportError(null);
+      const songTitle = currentFile.name.trim() || "Untitled";
+      const blob = new Blob([currentFile.content], {
+        type: "text/plain;charset=utf-8",
+      });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${songTitle}.mml`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (e: any) {
+      console.error("MML export failed:", e);
+      setExportError(`MMLエクスポート失敗: ${e?.message || e}`);
+    }
+  };
 
   return (
     <>
@@ -120,8 +163,7 @@ function SidebarContent() {
       <div className="divider" />
       <h3 className="font-semibold text-lg">ファイルをインポート</h3>
       <p className="mx-2 text-paragraph text-sm">
-        DATA 文または BGMSET 文を含む SmileBASIC プログラム、または MML
-        ファイルを読み込みます。
+        MML ファイル、SmileBASIC プログラム (DATA/BGMSET)、または MIDI ファイル (.mid) を読み込みます。
       </p>
       <div className="flex justify-center">
         <label
@@ -133,10 +175,12 @@ function SidebarContent() {
         <input
           type="file"
           id="SidebarImportMML"
+          accept=".mml,.txt,.prg,.mid,.midi"
           className="hidden"
           onChange={(e) => {
             if (e.target.files?.[0]) {
               loadFile(e.target.files[0]);
+              e.target.value = "";
             }
           }}
         />
@@ -146,7 +190,27 @@ function SidebarContent() {
       </p>
       <div className="divider" />
       <h3 className="font-semibold text-lg">ファイルをエクスポート</h3>
-      <div>TODO</div>
+      <div className="flex flex-col gap-2 mx-1">
+        <button
+          className="btn btn-primary btn-soft btn-sm w-full"
+          onClick={handleExportMidi}
+          disabled={!currentFile.content.trim()}
+        >
+          MIDI ファイル (.mid) で保存
+        </button>
+        <button
+          className="btn btn-neutral btn-soft btn-sm w-full"
+          onClick={handleExportMml}
+          disabled={!currentFile.content.trim()}
+        >
+          MML ファイル (.mml) で保存
+        </button>
+        {exportError && (
+          <div className="alert alert-error text-xs p-2">
+            <span>{exportError}</span>
+          </div>
+        )}
+      </div>
     </>
   );
 }
