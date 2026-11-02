@@ -12,7 +12,7 @@ import sample2 from "../samples/get_started_merged.mml?raw";
 import sample3 from "../samples/NA_NN.MML?raw";
 import { extractSmileBasicMML } from "../parser/smilebasicPrg";
 import { useInstrumentContext } from "./InstrumentContext.js";
-import { MidiImportModal } from "./MidiImportModal.js";
+import { convertSmfToMml } from "../midi/index.js";
 
 interface MmlFile {
   isSample?: boolean;
@@ -48,10 +48,6 @@ export function PlaylistProvider({ children }: { children: ReactNode }) {
     { isSample: true, name: "サンプル3", content: sample3 },
   ]);
   const [currentIndex, setCurrentIndex] = useState<number>(0);
-  const [pendingMidi, setPendingMidi] = useState<{
-    file: File;
-    buffer: ArrayBuffer;
-  } | null>(null);
 
   const addFile = useCallback((name: string, content: string) => {
     loadWavset(content);
@@ -73,9 +69,14 @@ export function PlaylistProvider({ children }: { children: ReactNode }) {
       if (ext === ".mid" || ext === ".midi") {
         try {
           const buffer = await file.arrayBuffer();
-          setPendingMidi({ file, buffer });
-        } catch (e) {
-          console.error("Failed to read MIDI file:", e);
+          const result = convertSmfToMml(buffer, { format: "mml" });
+          addFile(
+            result.title || file.name.replace(/\.[^/.]+$/, ""),
+            result.mml,
+          );
+        } catch (e: any) {
+          console.error("Failed to import MIDI file:", e);
+          alert(`MIDIファイルのインポートに失敗しました: ${e?.message || e}`);
         }
         return;
       }
@@ -112,7 +113,7 @@ export function PlaylistProvider({ children }: { children: ReactNode }) {
       };
       reader.readAsText(file);
     },
-    [loadWavset],
+    [loadWavset, addFile],
   );
 
   const newFile = useCallback(() => {
@@ -202,17 +203,6 @@ export function PlaylistProvider({ children }: { children: ReactNode }) {
       }}
     >
       {children}
-      {pendingMidi && (
-        <MidiImportModal
-          file={pendingMidi.file}
-          buffer={pendingMidi.buffer}
-          onImport={(importedTitle, mml) => {
-            addFile(importedTitle, mml);
-            setPendingMidi(null);
-          }}
-          onClose={() => setPendingMidi(null)}
-        />
-      )}
     </PlaylistContext.Provider>
   );
 }

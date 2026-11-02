@@ -140,8 +140,8 @@ export function convertMmlToMidi(mml: string, options?: MmlToMidiOptions): Uint8
     const rawNotes = rawNotesByChannel.get(ch) || [];
     const otherEvents = otherEventsByChannel.get(ch) || [];
 
-    // Determine target MIDI channel (Ch 9 for drums if applicable)
-    let midiChannel = ch;
+    // Determine target MIDI channel (Ch 9 for drums if applicable, wrap to 0-15)
+    let midiChannel = ch % 16;
     const isDrum = rawNotes.some((n) => DRUM_PROGRAMS.has(n.program));
     if (options?.mapDrumsToChannel9 !== false && isDrum) {
       midiChannel = 9; // MIDI Drum Channel

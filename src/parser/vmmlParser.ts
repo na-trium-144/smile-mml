@@ -930,7 +930,7 @@ export class MMLChannelParser {
 }
 
 /**
- * Splits MML string into 16 channels, matching VMSTART logic
+ * Splits MML string into channels, matching VMSTART logic
  */
 export function splitMMLChannels(mml: string): { channels: string[]; initialKeyShift: number } {
   const channels: string[] = Array(16).fill('');
@@ -951,6 +951,17 @@ export function splitMMLChannels(mml: string): { channels: string[]; initialKeyS
         }
       }
       i = j;
+      continue;
+    }
+
+    // Skip inside / ... / comments
+    if (mml[i] === '/') {
+      const nextSlash = mml.indexOf('/', i + 1);
+      if (nextSlash === -1) {
+        i = mml.length;
+      } else {
+        i = nextSlash;
+      }
       continue;
     }
 
@@ -982,15 +993,25 @@ export function splitMMLChannels(mml: string): { channels: string[]; initialKeyS
       p = p * 10 + (mml[i].charCodeAt(0) - 48);
       i++;
     }
-    if (p === -1 || p < 0 || p > 15) continue;
+    if (p === -1 || p < 0) continue;
+
+    while (channels.length <= p) {
+      channels.push('');
+    }
 
     if (op === -1) op = 0;
+    while (channels.length <= op) {
+      channels.push('');
+    }
     channels[op] += mml.slice(s, e) + ' ';
     s = i;
     op = p;
   }
 
   if (op === -1) op = 0;
+  while (channels.length <= op) {
+    channels.push('');
+  }
   channels[op] += mml.slice(s) + ' ';
 
   return { channels, initialKeyShift };
@@ -1011,7 +1032,7 @@ export function* parseMML(mml: string, options?: ParseOptions): Generator<MMLEve
 
   const channelStates: Map<number, ChannelState> = new Map();
 
-  for (let ch = 0; ch < 16; ch++) {
+  for (let ch = 0; ch < channels.length; ch++) {
     if (channels[ch].trim() !== '') {
       const parser = new MMLChannelParser(ch, channels[ch], mml, globalKeyShift);
       const initialEvents = parser.nextEvent();
