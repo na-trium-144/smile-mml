@@ -23,6 +23,7 @@
     "@wasm-audio-decoders/ogg-vorbis": "^0.1.20",
     "ace-builds": "^1.44.0",
     "clsx": "^2.1.1",
+    "encoding-japanese": "^2.4.0",
     "nitro-fs": "^1.1.1",
     "react": "^19.2.8",
     "react-ace": "^15.0.0",
@@ -30,6 +31,7 @@
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.3.3",
+    "@types/encoding-japanese": "^2.4.0",
     "@types/node": "^24.13.3",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.7",

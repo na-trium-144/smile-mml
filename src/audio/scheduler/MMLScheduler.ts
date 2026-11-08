@@ -52,7 +52,7 @@ export class MMLScheduler {
 
   // Channel parser states
   private channelStates: Map<number, ChannelState> = new Map();
-  public readonly channels: number[] = []; // Active channel list (0-15)
+  public readonly channels: number[] = []; // Active channel list
 
   // Prepared playback events (for Synth)
   private events: PostProcessedEvent[] = [];
@@ -107,7 +107,7 @@ export class MMLScheduler {
 
     const { channels, initialKeyShift } = splitMMLChannels(mml);
 
-    for (let ch = 0; ch < 16; ch++) {
+    for (let ch = 0; ch < channels.length; ch++) {
       if (channels[ch].trim() !== "") {
         this.channels.push(ch);
         this.notesByChannel.set(ch, []);

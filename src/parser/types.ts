@@ -67,6 +67,7 @@ export interface NoteEvent extends BaseMMLEvent {
   modulation: ModulationParams;
   isTie: boolean;
   isPortamento: boolean; // true if sliding to the next note
+  portamentoTargetNote?: number;
 }
 
 export interface RestEvent extends BaseMMLEvent {
