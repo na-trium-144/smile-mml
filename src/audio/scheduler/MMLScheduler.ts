@@ -1,73 +1,36 @@
 /**
  * MML Playback Scheduler
  * High-precision scheduling using WebAudio AudioContext timestamps
- * with lookahead buffer intervals, dynamic real-time parsing,
+ * with lookahead buffer intervals, dynamic real-time parsing (delegated to MMLProcessor),
  * and integrated visualizer preprocessing.
  */
 
 import type { SynthEngine } from "../synth/SynthEngine.js";
-import type { PostProcessedEvent, PostProcessedNote, NoteSegment, VoiceData } from "../types.js";
-import type { MMLEvent, NoteEvent } from "../../parser/types.js";
-import {
-  MMLChannelParser,
-  splitMMLChannels,
-  NOTE_NAMES,
-} from "../../parser/vmmlParser.js";
-import { sbDetuneToCents } from "../utils/conversion.js";
+import type { PostProcessedEvent, PostProcessedNote, VoiceData } from "../types.js";
 import { ModulationHelper } from "../synth/ModulationHelper.js";
-import { TempoMap } from "./TempoMap.js";
+import type { TempoMap } from "./TempoMap.js";
 import type { InstrumentBank } from "../banks/InstrumentBank.js";
-
-interface PendingCompound {
-  startTick: number;
-  firstNote: NoteEvent;
-  segments: NoteSegment[];
-  totalDuration: number;
-  lastNote: NoteEvent;
-}
-
-interface ChannelState {
-  channelIndex: number;
-  parser: MMLChannelParser;
-  nextResult: MMLEvent[]; // use [] instead of null
-  pendingCompound: PendingCompound | null;
-  firstInfiniteLoopReached: boolean;
-}
+import { MMLProcessor, type MMLProcessorSnapshot } from "./MMLProcessor.js";
 
 export class MMLScheduler {
   private synth: SynthEngine;
   private instrumentBanks: InstrumentBank[];
-  private tempoMap: TempoMap;
+  private processor: MMLProcessor;
   public onError: (e: unknown) => void;
 
   static readonly ticksPerWholeNote = 192;
 
-  // Snapshot of the first loop (never modified after initial pass)
-  private firstLoopEvents: PostProcessedEvent[] = [];
-  private firstLoopNotesByChannel: Map<number, PostProcessedNote[]> = new Map();
-  private firstLoopChannelStates: Map<number, ChannelState> = new Map();
+  // Snapshot of the first loop for infinite MML (never modified after initial pass)
+  private firstLoopSnapshot: MMLProcessorSnapshot | null = null;
   public firstLoopEndTick: number = 0;
   private hasPruned: boolean = false;
   private lastPrunedTick: number = 0;
 
-  // Channel parser states
-  private channelStates: Map<number, ChannelState> = new Map();
-  public readonly channels: number[] = []; // Active channel list
-
   // Prepared playback events (for Synth)
-  private events: PostProcessedEvent[] = [];
-  private eventsNeedSort: boolean = false;
   private nextEventIndex: number = 0;
-
-  // Visualizer data (for NoteVisualizer)
-  notesByChannel: Map<number, PostProcessedNote[]> = new Map();
 
   // Playback & parse state
   private isPlaying: boolean = false;
-  isInfiniteLoop: boolean = false;
-  private allFinished: boolean = false;
-  private maxTick: number = 0;
-  totalDurationSeconds: number = 0;
 
   private playbackOffsetSeconds: number = 0;
   private playbackStartAudioTime: number = 0;
@@ -90,7 +53,31 @@ export class MMLScheduler {
   ) => void;
   public onEnded?: () => void;
 
-  setInstrumentBanks(banks: InstrumentBank[]){
+  public get channels(): number[] {
+    return this.processor.channels;
+  }
+
+  public get notesByChannel(): Map<number, PostProcessedNote[]> {
+    return this.processor.notesByChannel;
+  }
+
+  public get tempoMap(): TempoMap {
+    return this.processor.tempoMap;
+  }
+
+  public get totalDurationSeconds(): number {
+    return this.processor.totalDurationSeconds;
+  }
+
+  public get isInfiniteLoop(): boolean {
+    return this.processor.isInfiniteLoop;
+  }
+
+  public get allFinished(): boolean {
+    return this.processor.allFinished;
+  }
+
+  public setInstrumentBanks(banks: InstrumentBank[]): void {
     this.instrumentBanks = banks;
   }
 
@@ -103,467 +90,14 @@ export class MMLScheduler {
     this.synth = synth;
     this.instrumentBanks = banks;
     this.onError = onError;
-    this.tempoMap = new TempoMap([], MMLScheduler.ticksPerWholeNote);
 
-    const { channels, initialKeyShift } = splitMMLChannels(mml);
-
-    for (let ch = 0; ch < channels.length; ch++) {
-      if (channels[ch].trim() !== "") {
-        this.channels.push(ch);
-        this.notesByChannel.set(ch, []);
-
-        const parser = new MMLChannelParser(
-          ch,
-          channels[ch],
-          mml,
-          initialKeyShift,
-        );
-        const nextResult = parser.nextEvent();
-
-        this.channelStates.set(ch, {
-          channelIndex: ch,
-          parser,
-          nextResult,
-          pendingCompound: null,
-          firstInfiniteLoopReached: false,
-        });
-      }
-    }
-
-    // First pass: parse until all channels reach their first infinite loop or end.
-    // This immediately determines totalDurationSeconds (entire song for finite MML,
-    // or first loop duration for infinite MML).
-    this.parseFirstPass();
-    this.firstLoopEndTick = this.maxTick;
+    this.processor = new MMLProcessor(mml, onError);
+    this.firstLoopEndTick = this.processor.firstLoopEndTick;
 
     // Save snapshot of first loop so seek/stop can restore instantly without re-parsing
-    if (this.isInfiniteLoop) {
-      this.firstLoopEvents = [...this.events];
-      for (const ch of this.channels) {
-        this.firstLoopNotesByChannel.set(ch, [...(this.notesByChannel.get(ch) ?? [])]);
-      }
-      for (const [ch, state] of this.channelStates) {
-        this.firstLoopChannelStates.set(ch, this.cloneChannelState(state));
-      }
+    if (this.processor.isInfiniteLoop) {
+      this.firstLoopSnapshot = this.processor.createSnapshot();
     }
-  }
-
-  /**
-   * Initial batch parse in constructor.
-   * Advances all channels until they finish or encounter their first infinite loop.
-   */
-  private parseFirstPass(): void {
-    while (true) {
-      let minTick = Infinity;
-      let selectedCh = -1;
-
-      for (const [ch, state] of this.channelStates) {
-        if (
-          state.parser.isFinished ||
-          state.firstInfiniteLoopReached ||
-          state.nextResult.length === 0
-        ) {
-          continue;
-        }
-        const tick = state.nextResult[0].tick;
-        if (tick < minTick) {
-          minTick = tick;
-          selectedCh = ch;
-        }
-      }
-
-      if (selectedCh === -1) {
-        // All channels have finished or reached their first infinite loop
-        break;
-      }
-
-      const state = this.channelStates.get(selectedCh)!;
-      const events = state.nextResult;
-      if (events[0].type === "loop" && events[0].isInfinite) {
-        this.isInfiniteLoop = true;
-        state.firstInfiniteLoopReached = true;
-        // Do not advance generator past this infinite loop in the first pass
-        continue;
-      }
-
-      state.nextResult = state.parser.nextEvent();
-
-      for (const event of events){
-        this.processEvent(state, event);
-      }
-    }
-
-    if (!this.isInfiniteLoop) {
-      // Finite MML: all channels completed, flush any remaining pendingNotes
-      this.flushAllChannels();
-      this.allFinished = true;
-    } else {
-      // Infinite MML: reset firstInfiniteLoopReached so playback can advance past it.
-      // Do NOT flush pendingNote here because loop ends can tie or portamento across
-      // the loop boundary into the next iteration (e.g. [ERC_] = ERC_ERC_E...)
-      for (const [, state] of this.channelStates) {
-        state.firstInfiniteLoopReached = false;
-      }
-    }
-
-    this.ensureEventsSorted();
-
-    // Duration is now known: full duration for finite, 1st loop duration for infinite
-    this.totalDurationSeconds = this.tempoMap.tickToSeconds(this.maxTick);
-  }
-
-  /**
-   * Parse events from channels until all active channels advance past targetTick,
-   * AND all pending ties or unresolved portamento targets (started at or before targetTick)
-   * are completely resolved by following notes.
-   */
-  public parseUntil(targetTick: number): void {
-    if (this.allFinished) return;
-
-    let iterations = 0;
-    const maxIterations = 20000; // Safeguard against pathological infinite tie MMLs
-
-    while (iterations++ < maxIterations) {
-      let minTick = Infinity;
-      let selectedCh = -1;
-
-      for (const [ch, state] of this.channelStates) {
-        if (state.parser.isFinished || state.nextResult.length === 0) {
-          continue;
-        }
-        const tick = state.nextResult[0].tick;
-        if (tick < minTick) {
-          minTick = tick;
-          selectedCh = ch;
-        }
-      }
-
-      if (selectedCh === -1) {
-        // All active channels have completed
-        this.flushAllChannels();
-        this.allFinished = true;
-        if (!this.isInfiniteLoop) {
-          this.totalDurationSeconds = this.tempoMap.tickToSeconds(this.maxTick);
-        }
-        break;
-      }
-
-      if (minTick > targetTick) {
-        // minTick has passed targetTick.
-        // Check if any channel still has an unresolved pending tie or portamento target.
-        let hasPending = false;
-        for (const [, state] of this.channelStates) {
-          if (state.parser.isFinished) continue;
-          if (state.pendingCompound) {
-            hasPending = true;
-            break;
-          }
-        }
-
-        if (!hasPending) {
-          // All pending ties and portamentos are resolved!
-          break;
-        }
-      }
-
-      const state = this.channelStates.get(selectedCh)!;
-      const events = state.nextResult
-
-      state.nextResult = state.parser.nextEvent();
-
-      for (const event of events){
-        this.processEvent(state, event);
-      }
-    }
-
-    if (this.eventsNeedSort) {
-      this.ensureEventsSorted();
-    }
-  }
-
-  private processEvent(state: ChannelState, event: MMLEvent): void {
-    if (event.type === "tempo") {
-      this.tempoMap.addTempo(event.tick, event.bpm);
-      this.events.push({
-        type: "tempo",
-        tick: event.tick,
-        bpm: event.bpm,
-      });
-      this.eventsNeedSort = true;
-      return;
-    }
-
-    if (event.type === "control") {
-      if (event.controller === 7) {
-        this.events.push({
-          type: "volume",
-          tick: event.tick,
-          channel: event.channel,
-          volume: event.value,
-        });
-        this.eventsNeedSort = true;
-      } else if (event.controller === 10) {
-        this.events.push({
-          type: "pan",
-          tick: event.tick,
-          channel: event.channel,
-          pan: event.value,
-        });
-        this.eventsNeedSort = true;
-      }
-      return;
-    }
-
-    if (event.type === "loop") {
-      if (event.isInfinite) {
-        this.isInfiniteLoop = true;
-      }
-      return;
-    }
-
-    if (event.type === "rest") {
-      this.flushChannel(state);
-      return;
-    }
-
-    if (event.type === "end") {
-      this.flushChannel(state);
-      if (event.error) {
-        this.onError(event.error);
-      }
-      return;
-    }
-
-    if (event.type === "note") {
-      // Track maxTick from raw note duration as well
-      const noteEnd = event.tick + event.duration;
-      if (noteEnd > this.maxTick) {
-        this.maxTick = noteEnd;
-      }
-
-      // 2. Compound note (tie, slur, portamento) pipeline
-      const pending = state.pendingCompound;
-
-      if (pending) {
-        // Resolve portamento target for previous portamento segment if any
-        const lastSeg = pending.segments[pending.segments.length - 1];
-        if (pending.lastNote.isPortamento && lastSeg.portamentoTargetNote === undefined) {
-          lastSeg.portamentoTargetNote = event.noteNumber;
-          lastSeg.portamentoTargetDetuneCents = sbDetuneToCents(event.detune);
-          lastSeg.portamentoTargetNoteStr = MMLScheduler.noteString(event);
-          lastSeg.portamentoTargetOctave = event.baseOctave;
-        }
-
-        const prevNote = pending.lastNote;
-        const isIdentical =
-          prevNote.noteNumber === event.noteNumber &&
-          prevNote.velocity === event.velocity &&
-          prevNote.volume === event.volume &&
-          prevNote.pan === event.pan &&
-          prevNote.detune === event.detune;
-
-        // Same pitch and parameters following a tie (&): merge segment into previous one
-        if (prevNote.isTie && isIdentical) {
-          lastSeg.durationTicks += event.duration;
-          lastSeg.isPortamento = event.isPortamento;
-          pending.totalDuration += event.duration;
-          pending.lastNote = event;
-          lastSeg.noteStr += MMLScheduler.noteString(event);
-        } else {
-          // Different pitch or parameter change (slur), or following a portamento (_)
-          if (event.duration > 0 || event.isTie || event.isPortamento) {
-            pending.segments.push({
-              tickOffset: event.tick - pending.startTick,
-              durationTicks: event.duration,
-              noteNumber: event.noteNumber,
-              detuneCents: sbDetuneToCents(event.detune),
-              velocity: event.velocity,
-              volume: event.volume,
-              pan: event.pan,
-              isPortamento: event.isPortamento,
-              noteStr: MMLScheduler.noteString(event),
-              octave: event.baseOctave,
-            });
-            pending.totalDuration += event.duration;
-          }
-          pending.lastNote = event;
-        }
-
-        // Check if compound note continues
-        if (event.isTie || event.isPortamento) {
-          return;
-        }
-
-        // Compound note fully resolved: emit and clear pending
-        this.emitCompoundNote(pending);
-        state.pendingCompound = null;
-        return;
-      }
-
-      // No pending compound:
-      // If event initiates a tie or portamento, start a new pendingCompound
-      if (event.isTie || event.isPortamento) {
-        state.pendingCompound = {
-          startTick: event.tick,
-          firstNote: event,
-          segments: [
-            {
-              tickOffset: 0,
-              durationTicks: event.duration,
-              noteNumber: event.noteNumber,
-              detuneCents: sbDetuneToCents(event.detune),
-              velocity: event.velocity,
-              volume: event.volume,
-              pan: event.pan,
-              isPortamento: event.isPortamento,
-              noteStr: MMLScheduler.noteString(event),
-              octave: event.baseOctave,
-            },
-          ],
-          totalDuration: event.duration,
-          lastNote: event,
-        };
-      } else {
-        this.emitSingleNote(event);
-      }
-    }
-  }
-  static noteString(event: NoteEvent){
-    return NOTE_NAMES[event.baseNoteIndex] +
-        (event.totalAccidentials > 0
-          ? "#".repeat(event.totalAccidentials)
-          : "b".repeat(-event.totalAccidentials)) +
-        (event.duration > 0 ? event.noteValue.toString() + ".".repeat(event.totalDots) : "") +
-        (event.isTie ? "&" : "") +
-        (event.isPortamento ? "_" : "")
-  }
-
-  private flushChannel(state: ChannelState): void {
-    if (state.pendingCompound) {
-      this.emitCompoundNote(state.pendingCompound);
-      state.pendingCompound = null;
-    }
-  }
-
-  private flushAllChannels(): void {
-    for (const [, state] of this.channelStates) {
-      this.flushChannel(state);
-    }
-    if (this.eventsNeedSort) {
-      this.ensureEventsSorted();
-    }
-  }
-
-  private emitCompoundNote(compound: PendingCompound): void {
-    if (compound.totalDuration <= 0) return;
-
-    const first = compound.firstNote;
-    const gateRatio = first.gate / 8;
-    const gateDuration = Math.max(1, Math.round(compound.totalDuration * gateRatio));
-
-    const initialSeg = compound.segments[0];
-
-    const postProcessedNote: PostProcessedNote = {
-      tick: compound.startTick,
-      duration: compound.totalDuration,
-      gateDuration,
-      channel: first.channel,
-      noteNumber: initialSeg.noteNumber,
-      velocity: initialSeg.velocity, // V in MML
-      volume: initialSeg.volume, // @V in MML
-      pan: initialSeg.pan, // P in MML
-      program: first.program,
-      detuneCents: initialSeg.detuneCents,
-      envelope: first.envelope,
-      modulation: first.modulation,
-      segments: compound.segments,
-      synth: {
-        ...(first.modulation.enabled
-          ? (() => {
-              const m = new ModulationHelper(first.modulation);
-              return m.enabled ? { modulation: m } : {};
-            })()
-          : {}),
-      },
-    };
-
-    const noteEnd = postProcessedNote.tick + postProcessedNote.duration;
-    if (noteEnd > this.maxTick) {
-      this.maxTick = noteEnd;
-    }
-
-    this.events.push({
-      type: "note",
-      event: postProcessedNote,
-    });
-    this.notesByChannel.get(first.channel)?.push(postProcessedNote);
-    this.eventsNeedSort = true;
-  }
-
-  private emitSingleNote(n: NoteEvent): void {
-    if (n.duration <= 0) return;
-
-    const postProcessedNote: PostProcessedNote = {
-      tick: n.tick,
-      duration: n.duration,
-      gateDuration: Math.max(1, n.gateDuration),
-      channel: n.channel,
-      noteNumber: n.noteNumber,
-      velocity: n.velocity, // V in MML
-      volume: n.volume, // @V in MML
-      pan: n.pan,
-      program: n.program,
-      detuneCents: sbDetuneToCents(n.detune),
-      envelope: n.envelope,
-      modulation: n.modulation,
-      segments: [
-        {
-          tickOffset: 0,
-          durationTicks: n.duration,
-          noteNumber: n.noteNumber,
-          detuneCents: sbDetuneToCents(n.detune),
-          velocity: n.velocity,
-          volume: n.volume,
-          pan: n.pan,
-          isPortamento: false,
-          noteStr: MMLScheduler.noteString(n),
-              octave: n.baseOctave,
-        },
-      ],
-      synth: {
-        ...(n.modulation.enabled
-          ? (() => {
-              const m = new ModulationHelper(n.modulation);
-              return m.enabled ? { modulation: m } : {};
-            })()
-          : {}),
-      },
-    };
-
-    const noteEnd = postProcessedNote.tick + postProcessedNote.duration;
-    if (noteEnd > this.maxTick) {
-      this.maxTick = noteEnd;
-    }
-
-    this.events.push({
-      type: "note",
-      event: postProcessedNote,
-    });
-    this.notesByChannel.get(n.channel)?.push(postProcessedNote);
-    this.eventsNeedSort = true;
-  }
-
-  private ensureEventsSorted(): void {
-    if (!this.eventsNeedSort) return;
-    this.events.sort((a, b) => {
-      const tickA = a.type === "note" ? a.event.tick : a.tick;
-      const tickB = b.type === "note" ? b.event.tick : b.tick;
-      if (tickA !== tickB) return tickA - tickB;
-      if (a.type !== "note" && b.type === "note") return -1;
-      if (a.type === "note" && b.type !== "note") return 1;
-      return 0;
-    });
-    this.eventsNeedSort = false;
   }
 
   /**
@@ -577,16 +111,16 @@ export class MMLScheduler {
 
     // If reaching the end of finite playback, restart from beginning
     if (
-      !this.isInfiniteLoop &&
-      this.allFinished &&
-      this.playbackOffsetSeconds >= this.totalDurationSeconds
+      !this.processor.isInfiniteLoop &&
+      this.processor.allFinished &&
+      this.playbackOffsetSeconds >= this.processor.totalDurationSeconds
     ) {
       this.playbackOffsetSeconds = 0;
     }
 
-    const currentTick = this.tempoMap.secondsToTick(this.playbackOffsetSeconds);
+    const currentTick = this.processor.tempoMap.secondsToTick(this.playbackOffsetSeconds);
     if (
-      this.isInfiniteLoop &&
+      this.processor.isInfiniteLoop &&
       this.hasPruned &&
       currentTick <= this.firstLoopEndTick
     ) {
@@ -597,14 +131,13 @@ export class MMLScheduler {
       this.synth.currentTime - this.playbackOffsetSeconds;
 
     // Ensure lookahead buffer is filled up to current position + lookahead
-    this.parseUntil(currentTick + this.lookaheadTicks);
-    this.ensureEventsSorted();
+    this.processor.parseUntil(currentTick + this.lookaheadTicks);
 
     // Move nextEventIndex to matching event
     this.nextEventIndex = 0;
     while (
-      this.nextEventIndex < this.events.length &&
-      this.getEventTime(this.events[this.nextEventIndex]) <
+      this.nextEventIndex < this.processor.events.length &&
+      this.getEventTime(this.processor.events[this.nextEventIndex]) <
         this.playbackOffsetSeconds
     ) {
       this.nextEventIndex++;
@@ -643,7 +176,7 @@ export class MMLScheduler {
     this.synth.stopAll();
     this.synth.resetChannelVolumes();
 
-    if (this.isInfiniteLoop && this.hasPruned) {
+    if (this.processor.isInfiniteLoop && this.hasPruned) {
       this.restoreFirstLoop();
     } else {
       this.nextEventIndex = 0;
@@ -662,22 +195,21 @@ export class MMLScheduler {
     }
 
     // For infinite loops, allow seeking anywhere within the first loop. For finite, clamp to totalDurationSeconds.
-    const maxSec = this.totalDurationSeconds;
+    const maxSec = this.processor.totalDurationSeconds;
     this.playbackOffsetSeconds = Math.max(0, Math.min(maxSec, seconds));
     this.synth.stopAll();
 
-    if (this.isInfiniteLoop && this.hasPruned) {
+    if (this.processor.isInfiniteLoop && this.hasPruned) {
       this.restoreFirstLoop();
     }
 
-    const targetTick = this.tempoMap.secondsToTick(this.playbackOffsetSeconds);
-    this.parseUntil(targetTick + this.lookaheadTicks);
-    this.ensureEventsSorted();
+    const targetTick = this.processor.tempoMap.secondsToTick(this.playbackOffsetSeconds);
+    this.processor.parseUntil(targetTick + this.lookaheadTicks);
 
     this.nextEventIndex = 0;
     while (
-      this.nextEventIndex < this.events.length &&
-      this.getEventTime(this.events[this.nextEventIndex]) <
+      this.nextEventIndex < this.processor.events.length &&
+      this.getEventTime(this.processor.events[this.nextEventIndex]) <
         this.playbackOffsetSeconds
     ) {
       this.nextEventIndex++;
@@ -693,8 +225,8 @@ export class MMLScheduler {
   public getCurrentSeconds(): number {
     if (this.isPlaying) {
       const elapsed = this.synth.currentTime - this.playbackStartAudioTime;
-      if (!this.isInfiniteLoop && this.allFinished) {
-        return Math.min(this.totalDurationSeconds, elapsed);
+      if (!this.processor.isInfiniteLoop && this.processor.allFinished) {
+        return Math.min(this.processor.totalDurationSeconds, elapsed);
       }
       return elapsed;
     }
@@ -702,11 +234,11 @@ export class MMLScheduler {
   }
 
   public getCurrentTick(): number {
-    return this.tempoMap.secondsToTick(this.getCurrentSeconds());
+    return this.processor.tempoMap.secondsToTick(this.getCurrentSeconds());
   }
 
   public secondsToTick(seconds: number): number {
-    return this.tempoMap.secondsToTick(seconds);
+    return this.processor.tempoMap.secondsToTick(seconds);
   }
 
   private startSchedulerLoop(): void {
@@ -716,21 +248,20 @@ export class MMLScheduler {
       const currentAudioTime = this.synth.currentTime;
       const currentPlaybackSeconds =
         currentAudioTime - this.playbackStartAudioTime;
-      const currentTick = this.tempoMap.secondsToTick(currentPlaybackSeconds);
+      const currentTick = this.processor.tempoMap.secondsToTick(currentPlaybackSeconds);
 
       // Real-time advance: parse ahead by lookaheadTicks AND resolve any ties/portamentos
-      this.parseUntil(currentTick + this.lookaheadTicks);
-      this.ensureEventsSorted();
+      this.processor.parseUntil(currentTick + this.lookaheadTicks);
 
-      if (this.isInfiniteLoop) {
+      if (this.processor.isInfiniteLoop) {
         this.pruneOldData(currentTick);
       }
 
       const scheduleUntilSeconds =
         currentPlaybackSeconds + this.lookaheadSeconds;
 
-      while (this.nextEventIndex < this.events.length) {
-        const ev = this.events[this.nextEventIndex];
+      while (this.nextEventIndex < this.processor.events.length) {
+        const ev = this.processor.events[this.nextEventIndex];
         const eventSec = this.getEventTime(ev);
 
         if (eventSec > scheduleUntilSeconds) {
@@ -740,11 +271,7 @@ export class MMLScheduler {
         const targetAudioTime = this.playbackStartAudioTime + eventSec;
 
         if (ev.type === "note") {
-          // ev.type=volumeの際の更新だけでは、seekでvolumeイベントを読み飛ばした時のvolumeが正しくなくなる
           this.synth.setChannelVolume(ev.event.channel, ev.event.volume, targetAudioTime);
-          // TODO: 並列化
-          // awaitを外せば並列化できるが、SF2InstrumentBankのOggVorbisDecoderの出力が壊れた。要検証
-          // そもそも並列化する必要があるかどうかも要検証
           await this.scheduleNote(ev.event, targetAudioTime).catch((e) => {
             this.onError(e);
           });
@@ -757,10 +284,10 @@ export class MMLScheduler {
 
       // Check if finished (only for finite MML when all channels are exhausted)
       if (
-        !this.isInfiniteLoop &&
-        this.allFinished &&
-        this.nextEventIndex >= this.events.length &&
-        currentPlaybackSeconds >= this.totalDurationSeconds + 0.5
+        !this.processor.isInfiniteLoop &&
+        this.processor.allFinished &&
+        this.nextEventIndex >= this.processor.events.length &&
+        currentPlaybackSeconds >= this.processor.totalDurationSeconds + 0.5
       ) {
         this.stop();
         this.onEnded?.();
@@ -776,38 +303,14 @@ export class MMLScheduler {
     window.setTimeout(tickLoop, 0);
   }
 
-  private cloneChannelState(state: ChannelState): ChannelState {
-    return {
-      channelIndex: state.channelIndex,
-      parser: state.parser.clone(),
-      nextResult: structuredClone(state.nextResult),
-      pendingCompound: structuredClone(state.pendingCompound),
-      firstInfiniteLoopReached: state.firstInfiniteLoopReached,
-    };
-  }
-
   /**
    * Restores events and notes from the first loop snapshot,
    * and resets channel states to the end of the first loop.
    */
   private restoreFirstLoop(): void {
-    // 1. Restore events from first loop snapshot (no re-parsing needed!)
-    this.events = [...this.firstLoopEvents];
-    this.eventsNeedSort = false;
+    if (!this.firstLoopSnapshot) return;
+    this.processor.restoreSnapshot(this.firstLoopSnapshot);
     this.nextEventIndex = 0;
-
-    // 2. Restore notesByChannel from first loop snapshot (no re-parsing needed!)
-    for (const ch of this.channels) {
-      const saved = this.firstLoopNotesByChannel.get(ch) ?? [];
-      this.notesByChannel.set(ch, [...saved]);
-    }
-
-    // 3. Restore channelStates from snapshot
-    this.channelStates.clear();
-    for (const [ch, savedState] of this.firstLoopChannelStates) {
-      this.channelStates.set(ch, this.cloneChannelState(savedState));
-    }
-
     this.hasPruned = false;
     this.lastPrunedTick = 0;
   }
@@ -817,7 +320,7 @@ export class MMLScheduler {
    * using shift from the front of the active buffers.
    */
   public pruneOldData(currentTick: number): void {
-    if (!this.isInfiniteLoop) return;
+    if (!this.processor.isInfiniteLoop) return;
 
     const pruneBeforeTick = currentTick - this.backBufferTicks;
     if (pruneBeforeTick <= 0) {
@@ -829,14 +332,14 @@ export class MMLScheduler {
     }
     this.lastPrunedTick = currentTick;
 
-    // 1. Prune this.events from the front using shift
-    while (this.events.length > 0) {
-      const ev = this.events[0];
+    // 1. Prune this.processor.events from the front using shift
+    while (this.processor.events.length > 0) {
+      const ev = this.processor.events[0];
       const evEndTick =
         ev.type === "note" ? ev.event.tick + ev.event.duration : ev.tick;
 
       if (evEndTick < pruneBeforeTick) {
-        this.events.shift();
+        this.processor.events.shift();
         this.nextEventIndex = Math.max(0, this.nextEventIndex - 1);
         this.hasPruned = true;
       } else {
@@ -844,8 +347,8 @@ export class MMLScheduler {
       }
     }
 
-    // 2. Prune this.notesByChannel from the front using shift
-    for (const [, notes] of this.notesByChannel) {
+    // 2. Prune this.processor.notesByChannel from the front using shift
+    for (const [, notes] of this.processor.notesByChannel) {
       while (notes.length > 0) {
         const note = notes[0];
         if (note.tick + note.duration < pruneBeforeTick) {
@@ -875,22 +378,22 @@ export class MMLScheduler {
       ...(modulation ? { modulation } : {}),
     };
 
-    note.synth.durationSec = this.tempoMap.durationTicksToSeconds(
+    note.synth.durationSec = this.processor.tempoMap.durationTicksToSeconds(
       note.tick,
       note.duration,
     );
-    note.synth.gateDurationSec = this.tempoMap.durationTicksToSeconds(
+    note.synth.gateDurationSec = this.processor.tempoMap.durationTicksToSeconds(
       note.tick,
       note.gateDuration,
     );
 
     // Calculate timing in seconds for each segment
     for (const seg of note.segments) {
-      seg.startTimeOffsetSec = this.tempoMap.durationTicksToSeconds(
+      seg.startTimeOffsetSec = this.processor.tempoMap.durationTicksToSeconds(
         note.tick,
         seg.tickOffset,
       );
-      seg.durationSec = this.tempoMap.durationTicksToSeconds(
+      seg.durationSec = this.processor.tempoMap.durationTicksToSeconds(
         note.tick + seg.tickOffset,
         seg.durationTicks,
       );
@@ -926,7 +429,7 @@ export class MMLScheduler {
 
   private getEventTime(ev: PostProcessedEvent): number {
     const tick = ev.type === "note" ? ev.event.tick : ev.tick;
-    return this.tempoMap.tickToSeconds(tick);
+    return this.processor.tempoMap.tickToSeconds(tick);
   }
 
   private startProgressLoop(): void {

@@ -36,7 +36,6 @@ export interface TrackConvertOption {
 
 export interface ConvertSmfToMmlOptions {
   encoding?: string;
-  format?: 'mml' | 'smilebasic';
   maxChannels?: number;
   trackOptions?: TrackConvertOption[];
 }
@@ -61,7 +60,6 @@ export function convertSmfToMml(
 ): ConvertSmfResult {
   const converter = new SMFToMML(smfBuffer);
   const encoding = options.encoding || 'AUTO';
-  const format = options.format || 'mml';
   const maxChannels = options.maxChannels ?? Infinity;
 
   const rawTitle = converter.title;
@@ -147,47 +145,24 @@ export function convertSmfToMml(
 
   let fullMml = '';
 
-  if (format === 'smilebasic') {
-    let output = '';
-    let chars = 0;
-    for (const group of channelOutputs) {
-      const sanitizedName = group.trackName.replace(/\//g, '-');
-      output += `'/[${sanitizedName}]/ ${group.ticks} ticks\n`;
-      let ch = group.startChannel;
-      for (const mml of group.mmlList) {
-        output += `DATA ":${ch} ${mml}"\n`;
-        chars += mml.length;
-        ch++;
-      }
-    }
-    if (!output) {
-      output = `DATA 0\n`;
-    } else {
-      output += `DATA 0\n`;
-    }
-    const titleHeader = title ? `'Title: ${title} / ${chars} characters\n` : '';
-    fullMml = `CLS\nBGMSETD 128,@MMLDATA: BGMPLAY 128\nREPEAT: WAIT: UNTIL BUTTON()\nSNDSTOP\n@MMLDATA\n${titleHeader}${output}`;
-  } else {
-    // format === 'mml'
-    const headerLines = [];
-    if (title && title.trim() !== '') {
-      headerLines.push(`{TITLE=${title.trim()}}`);
-    }
-
-    const bodyLines = [];
-    for (const group of channelOutputs) {
-      const sanitizedName = group.trackName.replace(/\//g, '-');
-      bodyLines.push(`/[${sanitizedName}]/`);
-      let ch = group.startChannel;
-      for (const mml of group.mmlList) {
-        bodyLines.push(`:${ch} ${mml}`);
-        ch++;
-      }
-      bodyLines.push('');
-    }
-
-    fullMml = (headerLines.length > 0 ? headerLines.join('\n') + '\n\n' : '') + bodyLines.join('\n').trim() + '\n';
+  const headerLines = [];
+  if (title && title.trim() !== '') {
+    headerLines.push(`{TITLE=${title.trim()}}`);
   }
+
+  const bodyLines = [];
+  for (const group of channelOutputs) {
+    const sanitizedName = group.trackName.replace(/\//g, '-');
+    bodyLines.push(`/[${sanitizedName}]/`);
+    let ch = group.startChannel;
+    for (const mml of group.mmlList) {
+      bodyLines.push(`:${ch} ${mml}`);
+      ch++;
+    }
+    bodyLines.push('');
+  }
+
+  fullMml = (headerLines.length > 0 ? headerLines.join('\n') + '\n\n' : '') + bodyLines.join('\n').trim() + '\n';
 
   return {
     title,

@@ -69,7 +69,7 @@ export function PlaylistProvider({ children }: { children: ReactNode }) {
       if (ext === ".mid" || ext === ".midi") {
         try {
           const buffer = await file.arrayBuffer();
-          const result = convertSmfToMml(buffer, { format: "mml" });
+          const result = convertSmfToMml(buffer);
           addFile(
             result.title || file.name.replace(/\.[^/.]+$/, ""),
             result.mml,

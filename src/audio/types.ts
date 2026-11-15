@@ -116,5 +116,8 @@ export type PostProcessedEvent =
   | { type: 'note'; event: PostProcessedNote }
   | { type: 'volume'; tick: number; channel: number; volume: number }
   | { type: 'pan'; tick: number; channel: number; pan: number }
+  | { type: 'program'; tick: number; channel: number; program: number }
+  | { type: 'pitchBend'; tick: number; channel: number; value: number }
+  | { type: 'control'; tick: number; channel: number; controller: number; value: number }
   | { type: 'tempo'; tick: number; bpm: number }
   | { type: 'end'; tick: number };
