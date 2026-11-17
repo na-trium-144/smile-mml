@@ -207,7 +207,6 @@ export function convertMmlToMidi(mml: string, options?: MmlToMidiOptions): Uint8
       // Single Note Off at gate duration
       track.addEvent(midiStartTick + midiDuration, [0x80 | (midiChannel & 0x0f), shiftedNoteNumber, 0]);
 
-      let hadPitchBend = false;
       const baseNoteNumber = note.noteNumber;
 
       for (const seg of note.segments) {
@@ -217,7 +216,6 @@ export function convertMmlToMidi(mml: string, options?: MmlToMidiOptions): Uint8
         const startDelta = (seg.noteNumber - baseNoteNumber) + seg.detuneCents / 100;
 
         if (seg.isPortamento && seg.portamentoTargetNote !== undefined) {
-          hadPitchBend = true;
           const targetDelta =
             (seg.portamentoTargetNote - baseNoteNumber) + (seg.portamentoTargetDetuneCents ?? 0) / 100;
 
@@ -225,7 +223,7 @@ export function convertMmlToMidi(mml: string, options?: MmlToMidiOptions): Uint8
           const stepInterval = Math.max(12, Math.round(segDurationTicks / 24));
           const numSteps = Math.max(2, Math.floor(segDurationTicks / stepInterval));
 
-          for (let s = 0; s <= numSteps; s++) {
+          for (let s = 0; s < numSteps; s++) {
             const t = Math.min(segDurationTicks, Math.round((s / numSteps) * segDurationTicks));
             const progress = t / segDurationTicks;
             const currentDelta = startDelta + (targetDelta - startDelta) * progress;
@@ -234,17 +232,10 @@ export function convertMmlToMidi(mml: string, options?: MmlToMidiOptions): Uint8
           }
         } else {
           // Slur pitch shift or detune
-          if (startDelta !== 0 || hadPitchBend) {
-            hadPitchBend = true;
-            const bendVal = Math.round((startDelta / bendRange) * 8191);
-            track.addPitchBend(segStartTick, midiChannel, bendVal);
-          }
+          const bendVal = Math.round((startDelta / bendRange) * 8191);
+          // TODO: 前の音符と同じpitchbendであっても毎回出力しており、midiが冗長になる
+          track.addPitchBend(segStartTick, midiChannel, bendVal);
         }
-      }
-
-      // Reset pitch bend back to center (0) after Note Off if pitch bend was used
-      if (hadPitchBend) {
-        track.addPitchBend(midiStartTick + midiDuration, midiChannel, 0);
       }
     }
   }
