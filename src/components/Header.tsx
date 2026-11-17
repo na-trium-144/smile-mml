@@ -85,8 +85,14 @@ export function WithHeaderAndSidebar(props: Props) {
 }
 
 function SidebarContent() {
-  const { files, currentIndex, setCurrentIndex, currentFile, loadFile, newFile } =
-    usePlaylist();
+  const {
+    files,
+    currentIndex,
+    setCurrentIndex,
+    currentFile,
+    loadFile,
+    newFile,
+  } = usePlaylist();
   const [exportError, setExportError] = useState<string | null>(null);
 
   const handleExportMidi = () => {
@@ -94,7 +100,9 @@ function SidebarContent() {
       setExportError(null);
       const songTitle = currentFile.name.trim() || "Untitled";
       const midiBytes = convertMmlToMidi(currentFile.content, { songTitle });
-      const blob = new Blob([new Uint8Array(midiBytes)], { type: "audio/midi" });
+      const blob = new Blob([new Uint8Array(midiBytes)], {
+        type: "audio/midi",
+      });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
@@ -135,7 +143,7 @@ function SidebarContent() {
       <h3 className="font-semibold text-lg">MMLを選択</h3>
       <div
         className={clsx(
-          "min-h-0 shrink overflow-y-auto bg-base-200",
+          "min-h-0 flex-1 overflow-y-auto bg-base-200",
           "scrollbar-thumb-current/35 scrollbar-track-transparent",
         )}
       >
@@ -161,56 +169,69 @@ function SidebarContent() {
         </ul>
       </div>
       <div className="divider" />
-      <h3 className="font-semibold text-lg">ファイルをインポート</h3>
-      <p className="mx-2 text-paragraph text-sm">
-        MML ファイル、SmileBASIC プログラム (DATA/BGMSET)、または MIDI ファイル (.mid) を読み込みます。
-      </p>
-      <div className="flex justify-center">
-        <label
-          htmlFor="SidebarImportMML"
-          className="btn btn-primary btn-soft btn-sm"
-        >
-          ファイルを選択...
-        </label>
-        <input
-          type="file"
-          id="SidebarImportMML"
-          accept=".mml,.txt,.prg,.mid,.midi"
-          className="hidden"
-          onChange={(e) => {
-            if (e.target.files?.[0]) {
-              loadFile(e.target.files[0]);
-              e.target.value = "";
-            }
-          }}
-        />
-      </div>
-      <p className="mx-2 text-paragraph text-xs">
-        ファイルをドラッグ&ドロップで読み込むこともできます。
-      </p>
-      <div className="divider" />
-      <h3 className="font-semibold text-lg">ファイルをエクスポート</h3>
-      <div className="flex flex-col gap-2 mx-1">
-        <button
-          className="btn btn-primary btn-soft btn-sm w-full"
-          onClick={handleExportMidi}
-          disabled={!currentFile.content.trim()}
-        >
-          MIDI ファイル (.mid) で保存
-        </button>
-        <button
-          className="btn btn-neutral btn-soft btn-sm w-full"
-          onClick={handleExportMml}
-          disabled={!currentFile.content.trim()}
-        >
-          MML ファイル (.mml) で保存
-        </button>
-        {exportError && (
-          <div className="alert alert-error text-xs p-2">
-            <span>{exportError}</span>
+      <details className="collapse collapse-arrow" open>
+        <summary className="collapse-title p-0">
+          <h3 className="font-semibold text-lg">ファイルをインポート</h3>
+        </summary>
+        <div className="collapse-content p-0 pt-2 flex flex-col space-y-2">
+          <ul className="ml-6 list-disc list-outside text-paragraph text-sm space-y-1">
+            <li>MML ファイル</li>
+            <li>DATA 文または BGMSET 文を含む SmileBASIC プログラム</li>
+            <li>MIDI ファイル</li>
+          </ul>
+          <div className="flex justify-center">
+            <label
+              htmlFor="SidebarImportMML"
+              className="btn btn-primary btn-soft btn-sm"
+            >
+              ファイルを選択...
+            </label>
+            <input
+              type="file"
+              id="SidebarImportMML"
+              className="hidden"
+              onChange={(e) => {
+                if (e.target.files?.[0]) {
+                  loadFile(e.target.files[0]);
+                  e.target.value = "";
+                }
+              }}
+            />
           </div>
-        )}
-      </div>
+          <p className="mx-2 text-paragraph text-xs">
+            ファイルをドラッグ&ドロップで読み込むこともできます。
+          </p>
+        </div>
+      </details>
+      <div className="divider" />
+      <details className="collapse collapse-arrow" open>
+        <summary className="collapse-title p-0">
+          <h3 className="font-semibold text-lg">ファイルをエクスポート</h3>
+        </summary>
+        <div className="collapse-content p-0 pt-2 flex flex-col space-y-2">
+          <div className="flex flex-wrap flex-row justify-center gap-2">
+            <button
+              className="btn btn-primary btn-soft btn-sm"
+              onClick={handleExportMml}
+              disabled={!currentFile.content.trim()}
+            >
+              MML ファイル
+            </button>
+            <button
+              className="btn btn-primary btn-soft btn-sm"
+              onClick={handleExportMidi}
+              disabled={!currentFile.content.trim()}
+            >
+              MIDI ファイル
+            </button>
+          </div>
+          {exportError && (
+            <div className="alert alert-error text-xs p-2">
+              <span>{exportError}</span>
+            </div>
+          )}
+        </div>
+      </details>
     </>
   );
 }
