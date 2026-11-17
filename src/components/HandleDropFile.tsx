@@ -66,7 +66,7 @@ export function HandleDropFile(props: Props) {
       <div className="modal pointer-events-none" role="dialog">
         <div className="modal-box shadow-big flex flex-col items-center gap-2">
           <div>ファイルをドラッグ&ドロップで読み込む</div>
-          <div className="text-sm">MML ファイル または .sf2 / .sf3 / .nds / .sdat 音源ファイル</div>
+          <div className="text-sm">MML / MIDI (.mid, .midi) または .sf2 / .sf3 / .nds / .sdat 音源ファイル</div>
         </div>
       </div>
     </>

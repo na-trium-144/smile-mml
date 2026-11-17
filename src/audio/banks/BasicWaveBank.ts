@@ -55,6 +55,7 @@ export class BasicWaveBank implements InstrumentBank {
     keyShift?: number;
     attenuation?: number;
     envelope?: ADSRParams;
+    midiProgram?: number;
   }[] {
     // 音量は正確ではない
     // (TODO: 実機とsmilemmlの出力する波形の振幅を比較して調整する?)
@@ -67,6 +68,7 @@ export class BasicWaveBank implements InstrumentBank {
             duty: PSG_DUTY_CYCLES[p - 144],
             name: `PSG ${PSG_DUTY_CYCLES[p - 144] * 100}%`,
             attenuation: 0.4,
+            midiProgram: 80,
           }) as const,
       ),
       [257, 258, 259, 263].map(
@@ -83,6 +85,7 @@ export class BasicWaveBank implements InstrumentBank {
               259: convertSmileBASICEnvelope({ a: 125, d: 0, s: 127, r: 90 }),
               263: convertSmileBASICEnvelope({ a: 100, d: 0, s: 127, r: 90 }),
             }[p],
+            midiProgram: 80,
           }) as const,
       ),
       [151, 266].map(
@@ -93,6 +96,7 @@ export class BasicWaveBank implements InstrumentBank {
             name: "White Noise",
             ignoreKey: true,
             attenuation: 0.2,
+            midiProgram: 80,
           }) as const,
       ),
       // mkII仕様のノイズを@159に登録しておく。
@@ -105,6 +109,7 @@ export class BasicWaveBank implements InstrumentBank {
             name: "White Noise",
             ignoreKey: false,
             attenuation: 0.5,
+            midiProgram: 80,
           }) as const,
       ),
       [256, 297].map(
@@ -114,6 +119,7 @@ export class BasicWaveBank implements InstrumentBank {
             type: "sawtooth",
             name: "Sawtooth Wave",
             attenuation: 0.2,
+            midiProgram: 81,
           }) as const,
       ),
       [344].map(
@@ -124,9 +130,17 @@ export class BasicWaveBank implements InstrumentBank {
             name: "Sine Wave",
             attenuation: 0.4,
             keyShift: 12,
+            midiProgram: 80,
           }) as const,
       ),
     ].flat();
+  }
+
+  static findProgram(program: number) {
+    if (program >= 224 && program <= 255) {
+      return BasicWaveBank.allPrograms().find((p) => p.program === 344);
+    }
+    return BasicWaveBank.allPrograms().find((p) => p.program === program);
   }
 
   public getVoice(
@@ -134,13 +148,7 @@ export class BasicWaveBank implements InstrumentBank {
     _noteNumber: number,
     _velocity: number,
   ): VoiceData | null {
-    let programInfo = BasicWaveBank.allPrograms().find(
-      (p) => p.program === program,
-    );
-    // allPrograms には載せないが、ユーザー定義波形領域のデフォルトをsine波で生成する
-    if (program >= 224 && program <= 255) {
-      programInfo = BasicWaveBank.allPrograms().find((p) => p.program === 344);
-    }
+    const programInfo = BasicWaveBank.findProgram(program);
     if (!programInfo) {
       return null;
     }

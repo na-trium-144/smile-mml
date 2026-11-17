@@ -1,0 +1,3 @@
+[submodule "lib/pismf2mml"]
+	path = lib/pismf2mml
+	url = ../pismf2mml.git

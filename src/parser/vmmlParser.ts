@@ -14,6 +14,7 @@ import type {
   LFOParams,
   ModulationParams,
   MMLEvent,
+  ParseOptions,
 } from './types.js';
 
 export const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'] as const;
@@ -929,7 +930,7 @@ export class MMLChannelParser {
 }
 
 /**
- * Splits MML string into 16 channels, matching VMSTART logic
+ * Splits MML string into channels, matching VMSTART logic
  */
 export function splitMMLChannels(mml: string): { channels: string[]; initialKeyShift: number } {
   const channels: string[] = Array(16).fill('');
@@ -950,6 +951,17 @@ export function splitMMLChannels(mml: string): { channels: string[]; initialKeyS
         }
       }
       i = j;
+      continue;
+    }
+
+    // Skip inside / ... / comments
+    if (mml[i] === '/') {
+      const nextSlash = mml.indexOf('/', i + 1);
+      if (nextSlash === -1) {
+        i = mml.length;
+      } else {
+        i = nextSlash;
+      }
       continue;
     }
 
@@ -981,16 +993,102 @@ export function splitMMLChannels(mml: string): { channels: string[]; initialKeyS
       p = p * 10 + (mml[i].charCodeAt(0) - 48);
       i++;
     }
-    if (p === -1 || p < 0 || p > 15) continue;
+    if (p === -1 || p < 0) continue;
+
+    while (channels.length <= p) {
+      channels.push('');
+    }
 
     if (op === -1) op = 0;
+    while (channels.length <= op) {
+      channels.push('');
+    }
     channels[op] += mml.slice(s, e) + ' ';
     s = i;
     op = p;
   }
 
   if (op === -1) op = 0;
+  while (channels.length <= op) {
+    channels.push('');
+  }
   channels[op] += mml.slice(s) + ' ';
 
   return { channels, initialKeyShift };
 }
+
+/**
+ * Main MML Generator: parses all channels concurrently and yields events in chronological tick order.
+ */
+export function* parseMML(mml: string, options?: ParseOptions): Generator<MMLEvent, void, unknown> {
+  const { channels, initialKeyShift } = splitMMLChannels(mml);
+  const globalKeyShift = (options?.keyShift ?? 0) + initialKeyShift;
+
+  interface ChannelState {
+    parser: MMLChannelParser;
+    queue: MMLEvent[];
+    isInfiniteLooped: boolean;
+  }
+
+  const channelStates: Map<number, ChannelState> = new Map();
+
+  for (let ch = 0; ch < channels.length; ch++) {
+    if (channels[ch].trim() !== '') {
+      const parser = new MMLChannelParser(ch, channels[ch], mml, globalKeyShift);
+      const initialEvents = parser.nextEvent();
+      channelStates.set(ch, {
+        parser,
+        queue: [...initialEvents],
+        isInfiniteLooped: false,
+      });
+    }
+  }
+
+  while (true) {
+    let minTick = Infinity;
+    let selectedCh = -1;
+
+    for (const [ch, state] of channelStates) {
+      while (state.queue.length === 0 && !state.parser.isFinished && !state.isInfiniteLooped) {
+        const events = state.parser.nextEvent();
+        if (events.length === 0) break;
+        state.queue.push(...events);
+      }
+
+      if (state.queue.length > 0) {
+        const tick = state.queue[0].tick;
+        if (tick < minTick) {
+          minTick = tick;
+          selectedCh = ch;
+        }
+      }
+    }
+
+    if (selectedCh === -1) {
+      break;
+    }
+
+    const state = channelStates.get(selectedCh)!;
+    const event = state.queue.shift()!;
+
+    if (event.type === 'loop' && event.isInfinite) {
+      state.isInfiniteLooped = true;
+      if (options?.stopOnInfiniteLoop) {
+        let allDoneOrLooped = true;
+        for (const [, s] of channelStates) {
+          if (!s.isInfiniteLooped && (!s.parser.isFinished || s.queue.length > 0)) {
+            allDoneOrLooped = false;
+            break;
+          }
+        }
+        if (allDoneOrLooped) {
+          yield event;
+          break;
+        }
+      }
+    }
+
+    yield event;
+  }
+}
+

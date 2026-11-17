@@ -184,6 +184,9 @@ importers:
       clsx:
         specifier: ^2.1.1
         version: 2.1.1
+      encoding-japanese:
+        specifier: ^2.4.0
+        version: 2.4.0
       nitro-fs:
         specifier: ^1.1.1
         version: 1.1.1
@@ -200,6 +203,9 @@ importers:
       '@tailwindcss/vite':
         specifier: ^4.3.3
         version: 4.3.3(vite@8.3.2(@types/node@24.19.1)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.15))
+      '@types/encoding-japanese':
+        specifier: ^2.4.0
+        version: 2.4.0
       '@types/node':
         specifier: ^24.13.3
         version: 24.19.1
@@ -1684,6 +1690,10 @@ packages:
     resolution: {integrity: sha512-/67zpWDBLV+oYAEL682s1ktXL0HgqX76f6gaVGkGnVZlBbm1zd0v4Bz8MFF2GGhoX9rvfq3KSQHubFHwa6w6/Q==}
     engines: {node: '>=12'}
 
+  '@types/encoding-japanese@2.4.0':
+    resolution: {integrity: sha512-3+DRbiNkPVZ9qcKmRDHwsPl/hA36EBj3r4gGHm0wA1bcVE4/c8X1sHEl0yJ6Uf+1NKwumRbdQI+CPYVv+lOHZA==}
+    deprecated: This is a stub types definition. encoding-japanese provides its own type definitions, so you do not need this installed.
+
   '@types/estree@1.0.9':
     resolution: {integrity: sha512-GhdPgy1el4/ImP05X05Uw4cw2/M93BCUmnEvWZNStlCzEKME4Fkk+YpoA5OiHNQmoS7Cafb8Xa3Pya8m1Qrzeg==}
 
@@ -1910,6 +1920,10 @@ packages:
 
   electron-to-chromium@1.5.459:
     resolution: {integrity: sha512-4SC9HHSFjO/liAhifpdOL5hG9b4BP7/5G3y3UPZVO8trlAXr1CaUEEJL0gWK3kOcYcZrOA5rkwG45Gra/lTIgg==}
+
+  encoding-japanese@2.4.0:
+    resolution: {integrity: sha512-PE0KjlsDy9JSsoU4C2Q8NXb1kC4c+bZRac9ZvHXUE4q1Ht63gScKMdEy9jst9+Fi3M4eDkqzkEhBZvix4blP2A==}
+    engines: {node: '>=18.0.0'}
 
   enhanced-resolve@5.26.0:
     resolution: {integrity: sha512-9vhedylFonb2YGogzUKX6+Ja72gOJbN1QHAqdrvqLwhdl/QWbKopzoUC9EbQNVsAns/bx/4uyqalrQAoy1IByw==}
@@ -4232,6 +4246,10 @@ snapshots:
       magic-string: 0.30.21
       string.prototype.matchall: 4.1.0
 
+  '@types/encoding-japanese@2.4.0':
+    dependencies:
+      encoding-japanese: 2.4.0
+
   '@types/estree@1.0.9': {}
 
   '@types/node@24.19.1':
@@ -4451,6 +4469,8 @@ snapshots:
       jake: 10.9.4
 
   electron-to-chromium@1.5.459: {}
+
+  encoding-japanese@2.4.0: {}
 
   enhanced-resolve@5.26.0:
     dependencies:
