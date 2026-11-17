@@ -7,6 +7,7 @@
 import { MMLProcessor } from '../audio/scheduler/MMLProcessor.js';
 import type { PostProcessedEvent, PostProcessedNote } from '../audio/types.js';
 import { SF2InstrumentBank } from '../audio/banks/SF2InstrumentBank.js';
+import { BasicWaveBank } from '../audio/banks/BasicWaveBank.js';
 import { MidiFile, MidiTrack } from './smf.js';
 
 export interface MmlToMidiOptions {
@@ -35,109 +36,44 @@ export interface ResolvedMidiProgram {
 }
 
 /**
- * Checks if a program number corresponds to a drum kit.
- * - 128-143
- * - 265, 267, 281, 366
- * - SF2 extension: bank 128 (e.g. 128000)
+ * Resolves an MML program number into a standard MIDI program (0-127),
+ * drum flag, and keyShift.
+ * - Checks BasicWaveBank first (returns midiProgram: 80 or 81, and optional keyShift).
+ * - Otherwise delegates to SF2InstrumentBank.resolveBankPreset(program).
  */
-export function isDrumProgram(program: number): boolean {
-  if (program >= 128 && program <= 143) return true;
-  if (program === 265 || program === 267 || program === 281 || program === 366) return true;
-  if (program >= 1000 && Math.floor(program / 1000) === 128) return true;
-  return false;
+export function resolveMidiProgram(program: number): ResolvedMidiProgram {
+  // 1. BasicWaveBank
+  const basicWave = BasicWaveBank.findProgram(program);
+  if (basicWave) {
+    return {
+      midiProgram: basicWave.midiProgram ?? 80,
+      isDrum: false,
+      keyShift: basicWave.keyShift ?? 0,
+    };
+  }
+
+  // 2. SF2InstrumentBank.resolveBankPreset
+  const res = SF2InstrumentBank.resolveBankPreset(program);
+  const isDrum =
+    (res.bank !== undefined && res.bank >= 120) ||
+    (program >= 128 && program <= 143) ||
+    program === 265 ||
+    program === 267 ||
+    program === 281 ||
+    program === 366;
+
+  return {
+    midiProgram: res.preset % 128,
+    isDrum,
+    keyShift: res.keyShift ?? 0,
+  };
 }
 
 /**
- * Resolves an MML program number into a standard MIDI program (0-127),
- * drum flag, and keyShift.
- * - Drums are mapped to GM drum kit presets.
- * - BasicWaveBank programs are substituted with 80 (square) or 81 (sawtooth).
- * - Programs in 260-346 defined in resolveBankPreset are replaced with their preset and keyShift.
- * - Custom SF2 programs (>=1000) are resolved to bank/preset.
+ * Checks if a program number corresponds to a drum kit.
  */
-export function resolveMidiProgram(program: number): ResolvedMidiProgram {
-  // 1. Drum sets
-  if (isDrumProgram(program)) {
-    if (SF2InstrumentBank.sb3HiddenPresets.includes(program as any)) {
-      const res = SF2InstrumentBank.resolveBankPreset(program);
-      return {
-        midiProgram: Math.max(0, Math.min(127, res.preset)),
-        isDrum: true,
-        keyShift: res.keyShift ?? 0,
-      };
-    }
-    if (program >= 1000 && Math.floor(program / 1000) === 128) {
-      return {
-        midiProgram: (program % 1000) % 128,
-        isDrum: true,
-        keyShift: 0,
-      };
-    }
-    // 281 or other 128-143 drum programs
-    const preset = program >= 128 && program <= 143 ? program - 128 : 0;
-    return {
-      midiProgram: Math.max(0, Math.min(127, preset)),
-      isDrum: true,
-      keyShift: 0,
-    };
-  }
-
-  // 2. BasicWaveBank programs substituted with 80 (square) or 81 (sawtooth)
-  // Sawtooth: 256, 297 -> 81 (Lead 2 sawtooth)
-  if (program === 256 || program === 297) {
-    return {
-      midiProgram: 81,
-      isDrum: false,
-      keyShift: 0,
-    };
-  }
-  // PSG (144..150, 257..259, 263), Noise (151, 159, 266, 310), Sine (344), User Wave (224..255)
-  if (
-    (program >= 144 && program <= 150) ||
-    program === 151 ||
-    program === 159 ||
-    program === 257 ||
-    program === 258 ||
-    program === 259 ||
-    program === 263 ||
-    program === 266 ||
-    program === 310 ||
-    program === 344 ||
-    (program >= 224 && program <= 255)
-  ) {
-    return {
-      midiProgram: 80, // Lead 1 (square)
-      isDrum: false,
-      keyShift: program === 344 ? 12 : 0,
-    };
-  }
-
-  // 3. Programs in 260-346 defined in resolveBankPreset
-  if (SF2InstrumentBank.sb3HiddenPresets.includes(program as any)) {
-    const res = SF2InstrumentBank.resolveBankPreset(program);
-    return {
-      midiProgram: Math.max(0, Math.min(127, res.preset)),
-      isDrum: res.bank === 128,
-      keyShift: res.keyShift ?? 0,
-    };
-  }
-
-  // 4. SF2 custom extension (>=1000)
-  if (program >= 1000) {
-    const res = SF2InstrumentBank.resolveBankPreset(program);
-    return {
-      midiProgram: Math.max(0, Math.min(127, res.preset % 128)),
-      isDrum: res.bank === 128,
-      keyShift: res.keyShift ?? 0,
-    };
-  }
-
-  // 5. Standard GM melody programs (0-127)
-  return {
-    midiProgram: Math.max(0, Math.min(127, program % 128)),
-    isDrum: false,
-    keyShift: 0,
-  };
+export function isDrumProgram(program: number): boolean {
+  return resolveMidiProgram(program).isDrum;
 }
 
 export function convertMmlToMidi(mml: string, options?: MmlToMidiOptions): Uint8Array {
@@ -262,15 +198,12 @@ export function convertMmlToMidi(mml: string, options?: MmlToMidiOptions): Uint8
 
       const midiStartTick = Math.round(note.tick * tickScale);
       const midiDuration = Math.max(1, Math.round(note.gateDuration * tickScale));
-      const effectiveVelocity = Math.max(
-        1,
-        Math.min(127, Math.round((note.velocity * note.volume) / 127))
-      );
+      const velocity = Math.max(1, Math.min(127, note.velocity));
 
       const shiftedNoteNumber = Math.max(0, Math.min(127, note.noteNumber + keyShift));
 
       // Single Note On at the beginning of the compound note
-      track.addEvent(midiStartTick, [0x90 | (midiChannel & 0x0f), shiftedNoteNumber, effectiveVelocity]);
+      track.addEvent(midiStartTick, [0x90 | (midiChannel & 0x0f), shiftedNoteNumber, velocity]);
       // Single Note Off at gate duration
       track.addEvent(midiStartTick + midiDuration, [0x80 | (midiChannel & 0x0f), shiftedNoteNumber, 0]);
 
