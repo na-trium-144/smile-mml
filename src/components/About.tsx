@@ -126,6 +126,18 @@ export function About() {
           のコードを参考に実装しています。
         </div>
         <div>
+          MIDI ファイルのインポートには{" "}
+          <a
+            href="https://github.com/myu314/pismf2mml"
+            className="link link-primary"
+            target="_blank"
+          >
+            myu314/pismf2mml
+          </a>{" "}
+          <span className="text-sm">(MIT)</span>{" "}
+          をフォークしたものを使用しています。
+        </div>
+        <div>
           その他、以下のサードパーティーパッケージを使用しています。
           <ul className="ml-2">
             {packages.map((p, i) => (
